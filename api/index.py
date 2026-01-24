@@ -61,7 +61,7 @@ COLOR_MAP = {
 
 # --- সেটিংস লোড করা ---
 def get_settings():
-    # IMPORTANT FIX: Collection object check fixed
+    # FIXED: PyMongo Boolean check fix
     if settings_col is None:
         return {}
     
@@ -120,6 +120,7 @@ def get_traffic_source(referrer_url):
 
 # --- চ্যানেল বক্স ---
 def get_channels_html(theme_color="sky"):
+    # FIXED: PyMongo Boolean check fix
     if channels_col is None: return ""
     try:
         channels = list(channels_col.find())
@@ -149,6 +150,7 @@ def favicon_png():
 # --- API ---
 @app.route('/api')
 def api_system():
+    # FIXED: PyMongo Boolean check fix
     if urls_col is None: return jsonify({"status": "error", "message": "Database Error"})
     
     settings = get_settings()
@@ -199,6 +201,7 @@ def index():
 
 @app.route('/shorten', methods=['POST'])
 def web_shorten():
+    # FIXED: PyMongo Boolean check fix
     if urls_col is None: return "Database Error"
     settings = get_settings()
     theme = settings.get('main_theme', 'sky') if settings else 'sky'
@@ -213,6 +216,7 @@ def web_shorten():
 @app.route('/admin')
 def admin_panel():
     if not is_logged_in(): return redirect(url_for('login'))
+    # FIXED: PyMongo Boolean check fix
     if urls_col is None: return "Database Error"
     
     settings = get_settings()
@@ -223,10 +227,12 @@ def admin_panel():
         total_clicks = sum(u.get('clicks', 0) for u in all_urls)
         
         channels = []
+        # FIXED: PyMongo Boolean check fix
         if channels_col is not None:
             channels = list(channels_col.find())
             
         direct_links = []
+        # FIXED: PyMongo Boolean check fix
         if direct_links_col is not None:
             direct_links = list(direct_links_col.find())
     except Exception as e:
@@ -540,6 +546,7 @@ def update_settings():
 def handle_ad_steps(short_code):
     settings = get_settings()
     
+    # FIXED: PyMongo Boolean check fix
     if urls_col is None or settings_col is None: 
         return "System Maintenance Mode"
     
@@ -568,6 +575,7 @@ def handle_ad_steps(short_code):
     user_country = get_user_country(user_ip)
     user_device = get_user_device() 
     
+    # FIXED: PyMongo Boolean check fix
     if direct_links_col is not None:
         all_links = list(direct_links_col.find({
             "$and": [
@@ -708,6 +716,7 @@ def forgot_password():
         settings = get_settings()
         if tg_id and tg_id == settings.get('admin_telegram_id'):
             otp = str(random.randint(100000, 999999))
+            # FIXED: PyMongo Boolean check fix
             if otp_col is not None:
                 otp_col.update_one({"id": "admin_reset"}, {"$set": {"otp": otp, "expire_at": datetime.now() + timedelta(minutes=5)}}, upsert=True)
                 requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", data={"chat_id": tg_id, "text": f"OTP: {otp}"})
@@ -720,6 +729,7 @@ def verify_otp():
     if not session.get('reset_id'): return redirect('/forgot-password')
     if request.method == 'POST':
         otp = request.form.get('otp')
+        # FIXED: PyMongo Boolean check fix
         if otp_col is not None:
             data = otp_col.find_one({"id": "admin_reset"})
             if data and data['otp'] == otp and data['expire_at'] > datetime.now():
@@ -731,6 +741,7 @@ def verify_otp():
 def reset_password():
     if not session.get('otp_verified'): return redirect('/forgot-password')
     if request.method == 'POST':
+        # FIXED: PyMongo Boolean check fix
         if settings_col is not None:
             settings_col.update_one({}, {"$set": {"admin_password": generate_password_hash(request.form.get('password'))}})
             session.clear()
