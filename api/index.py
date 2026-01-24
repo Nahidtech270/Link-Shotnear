@@ -14,28 +14,40 @@ from collections import Counter
 app = Flask(__name__)
 
 # --- কনফিগারেশন ---
+# Vercel-এ কাজ করার জন্য ডিফল্ট কি সেট করা হলো, তবে আপনি Environment Variable সেট করবেন
 app.secret_key = os.environ.get("SECRET_KEY", "premium-super-secret-key-2025")
 MONGO_URI = os.environ.get("MONGO_URI") 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8469682967:AAEWrNWBWjiYT3_L47Xe_byORfD6IIsFD34")
 
 # --- ডাটাবেস কানেকশন ---
-if not MONGO_URI:
-    print("Warning: MONGO_URI is not set! App may crash.")
-    
-client = MongoClient(MONGO_URI, tlsAllowInvalidCertificates=True, serverSelectionTimeoutMS=5000)
-db = client['premium_url_bot']
-urls_col = db['urls']
-settings_col = db['settings']
-channels_col = db['channels']
-otp_col = db['otps']
-direct_links_col = db['direct_links']
+client = None
+db = None
+urls_col = None
+settings_col = None
+channels_col = None
+otp_col = None
+direct_links_col = None
 
-# --- ডাটাবেস ইনডেক্সিং ---
-try:
-    urls_col.create_index("short_code", unique=True)
-    urls_col.create_index("created_at")
-except Exception as e:
-    print(f"Index setup skipped: {e}")
+if MONGO_URI:
+    try:
+        client = MongoClient(MONGO_URI, tlsAllowInvalidCertificates=True, serverSelectionTimeoutMS=5000)
+        db = client['premium_url_bot']
+        urls_col = db['urls']
+        settings_col = db['settings']
+        channels_col = db['channels']
+        otp_col = db['otps']
+        direct_links_col = db['direct_links']
+        
+        # ইনডেক্সিং
+        try:
+            urls_col.create_index("short_code", unique=True)
+            urls_col.create_index("created_at")
+        except:
+            pass
+    except Exception as e:
+        print(f"DB Connection Error: {e}")
+else:
+    print("Warning: MONGO_URI is not set! App will not work correctly.")
 
 # --- থিম কালার ম্যাপ ---
 COLOR_MAP = {
@@ -48,6 +60,8 @@ COLOR_MAP = {
 }
 
 def get_settings():
+    if not settings_col:
+        return {}
     settings = settings_col.find_one()
     if not settings:
         default_settings = {
@@ -99,6 +113,7 @@ def get_traffic_source(referrer_url):
 
 # --- চ্যানেল বক্স ---
 def get_channels_html(theme_color="sky"):
+    if not channels_col: return ""
     channels = list(channels_col.find())
     if not channels: return ""
     c = COLOR_MAP.get(theme_color, COLOR_MAP['sky'])
@@ -115,6 +130,7 @@ def get_channels_html(theme_color="sky"):
 # --- API ---
 @app.route('/api')
 def api_system():
+    if not urls_col: return jsonify({"status": "error", "message": "Database Error"})
     settings = get_settings()
     raw_token = request.args.get('api') or request.args.get('api_key') or request.args.get('key')
     api_token = raw_token.strip() if raw_token else None
@@ -122,7 +138,7 @@ def api_system():
     alias = request.args.get('alias')
     res_format = request.args.get('format', 'json').lower()
     
-    if not api_token or api_token != settings['api_key'].strip():
+    if not api_token or api_token != settings.get('api_key', '').strip():
         return jsonify({"status": "error", "message": "Invalid API Token"}) if res_format != 'text' else "Error: Invalid Token"
     
     if not long_url:
@@ -138,10 +154,11 @@ def api_system():
 def index():
     settings = get_settings()
     c = COLOR_MAP.get(settings.get('main_theme', 'sky'), COLOR_MAP['sky'])
-    return render_template_string(f'''<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://cdn.tailwindcss.com"></script><title>{settings['site_name']}</title><style>body {{ background: #0f172a; color: white; }} .glass {{ background: rgba(255,255,255,0.03); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); }}</style></head><body class="min-h-screen flex flex-col items-center justify-center p-6 text-center"><h1 class="text-5xl md:text-8xl font-black mb-4 {c['text']} italic tracking-tighter uppercase">{settings['site_name']}</h1><p class="text-gray-400 mb-12 text-lg md:text-xl font-bold uppercase tracking-widest">Enterprise Link Management</p><div class="glass p-5 rounded-[40px] w-full max-w-3xl shadow-3xl mb-8"><form action="/shorten" method="POST" class="flex flex-col md:flex-row gap-4"><input type="url" name="long_url" placeholder="PASTE LINK HERE..." required class="flex-1 bg-transparent p-5 outline-none text-white text-xl font-bold placeholder:text-slate-600"><button type="submit" class="{c['bg']} text-white px-10 py-5 rounded-[30px] font-black text-xl hover:scale-105 transition uppercase shadow-xl w-full md:w-auto">Shorten</button></form></div>{get_channels_html(settings.get('main_theme', 'sky'))}</body></html>''')
+    return render_template_string(f'''<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://cdn.tailwindcss.com"></script><title>{settings.get('site_name', 'Shortener')}</title><style>body {{ background: #0f172a; color: white; }} .glass {{ background: rgba(255,255,255,0.03); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); }}</style></head><body class="min-h-screen flex flex-col items-center justify-center p-6 text-center"><h1 class="text-5xl md:text-8xl font-black mb-4 {c['text']} italic tracking-tighter uppercase">{settings.get('site_name', 'Shortener')}</h1><p class="text-gray-400 mb-12 text-lg md:text-xl font-bold uppercase tracking-widest">Enterprise Link Management</p><div class="glass p-5 rounded-[40px] w-full max-w-3xl shadow-3xl mb-8"><form action="/shorten" method="POST" class="flex flex-col md:flex-row gap-4"><input type="url" name="long_url" placeholder="PASTE LINK HERE..." required class="flex-1 bg-transparent p-5 outline-none text-white text-xl font-bold placeholder:text-slate-600"><button type="submit" class="{c['bg']} text-white px-10 py-5 rounded-[30px] font-black text-xl hover:scale-105 transition uppercase shadow-xl w-full md:w-auto">Shorten</button></form></div>{get_channels_html(settings.get('main_theme', 'sky'))}</body></html>''')
 
 @app.route('/shorten', methods=['POST'])
 def web_shorten():
+    if not urls_col: return "Database Error"
     settings = get_settings()
     c = COLOR_MAP.get(settings.get('main_theme', 'sky'), COLOR_MAP['sky'])
     long_url = request.form.get('long_url')
@@ -153,6 +170,7 @@ def web_shorten():
 @app.route('/admin')
 def admin_panel():
     if not is_logged_in(): return redirect(url_for('login'))
+    if not urls_col: return "Database Error"
     settings = get_settings()
     all_urls = list(urls_col.find().sort("_id", -1))
     total_clicks = sum(u.get('clicks', 0) for u in all_urls)
@@ -276,18 +294,18 @@ def admin_panel():
                         </div>
 
                         <div class="grid grid-cols-2 gap-3">
-                            <input type="number" name="steps" value="{settings['steps']}" class="p-3 bg-slate-50 rounded-xl text-sm font-bold" placeholder="Steps">
-                            <input type="number" name="timer_seconds" value="{settings['timer_seconds']}" class="p-3 bg-slate-50 rounded-xl text-sm font-bold" placeholder="Seconds">
+                            <input type="number" name="steps" value="{settings.get('steps', 2)}" class="p-3 bg-slate-50 rounded-xl text-sm font-bold" placeholder="Steps">
+                            <input type="number" name="timer_seconds" value="{settings.get('timer_seconds', 10)}" class="p-3 bg-slate-50 rounded-xl text-sm font-bold" placeholder="Seconds">
                         </div>
-                        <input type="text" name="site_name" value="{settings['site_name']}" class="w-full p-3 bg-slate-50 rounded-xl font-bold text-sm" placeholder="Site Name">
+                        <input type="text" name="site_name" value="{settings.get('site_name', '')}" class="w-full p-3 bg-slate-50 rounded-xl font-bold text-sm" placeholder="Site Name">
                     </div>
 
                     <div class="bg-white p-6 rounded-[30px] shadow-sm space-y-4 border border-slate-100">
                         <h4 class="font-black text-lg text-emerald-600">💰 Monetization</h4>
                         <input type="number" name="direct_click_limit" value="{settings.get('direct_click_limit', 1)}" class="w-full p-3 bg-blue-50 rounded-xl font-bold text-blue-600 text-sm" placeholder="Clicks Per Session">
-                        <textarea name="popunder" placeholder="Popunder JS" class="w-full h-16 p-3 bg-slate-50 rounded-xl text-xs font-mono">{settings['popunder']}</textarea>
-                        <textarea name="banner" placeholder="Banner JS" class="w-full h-16 p-3 bg-slate-50 rounded-xl text-xs font-mono">{settings['banner']}</textarea>
-                        <textarea name="native" placeholder="Native JS" class="w-full h-16 p-3 bg-slate-50 rounded-xl text-xs font-mono">{settings['native']}</textarea>
+                        <textarea name="popunder" placeholder="Popunder JS" class="w-full h-16 p-3 bg-slate-50 rounded-xl text-xs font-mono">{settings.get('popunder', '')}</textarea>
+                        <textarea name="banner" placeholder="Banner JS" class="w-full h-16 p-3 bg-slate-50 rounded-xl text-xs font-mono">{settings.get('banner', '')}</textarea>
+                        <textarea name="native" placeholder="Native JS" class="w-full h-16 p-3 bg-slate-50 rounded-xl text-xs font-mono">{settings.get('native', '')}</textarea>
                         <button class="w-full bg-slate-900 text-white p-4 rounded-2xl font-black shadow-xl">Save Changes</button>
                     </div>
                 </form>
@@ -454,7 +472,7 @@ def update_settings():
         "main_theme": request.form.get('main_theme'),
         "step_theme": request.form.get('step_theme'),
         "template_style": request.form.get('template_style', 'standard'),
-        "api_key": raw_api if raw_api else get_settings()['api_key']
+        "api_key": raw_api if raw_api else get_settings().get('api_key')
     }
     new_pass = request.form.get('new_password')
     if new_pass and len(new_pass) > 2: d["admin_password"] = generate_password_hash(new_pass)
@@ -463,16 +481,30 @@ def update_settings():
 
 @app.route('/<short_code>')
 def handle_ad_steps(short_code):
-    step = int(request.args.get('step', 1))
     settings = get_settings()
+    if not urls_col: return "System Error"
+    
+    step = int(request.args.get('step', 1))
     url_data = urls_col.find_one({"short_code": short_code})
     
+    if not url_data: return "404 - Link Not Found", 404
+    
+    # Check if max steps reached
+    if step > settings.get('steps', 2):
+        user_ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
+        referrer = request.referrer
+        traffic_source = get_traffic_source(referrer)
+        
+        urls_col.update_one(
+            {"short_code": short_code}, 
+            {"$inc": {"clicks": 1, f"referrers.{traffic_source}": 1}}
+        )
+        return redirect(url_data['long_url'])
+    
+    # Ad Logic
     user_ip = request.headers.get('X-Forwarded-For', request.remote_addr).split(',')[0].strip()
     user_country = get_user_country(user_ip)
     user_device = get_user_device() 
-    
-    referrer = request.referrer
-    traffic_source = get_traffic_source(referrer)
     
     all_links = list(direct_links_col.find({
         "$and": [
@@ -486,17 +518,10 @@ def handle_ad_steps(short_code):
     if not link_list: link_list = ["https://google.com"]
 
     js_link_array = json.dumps(link_list)
-
-    if not url_data: return "404 - Link Not Found", 404
-    if step > settings['steps']:
-        urls_col.update_one(
-            {"short_code": short_code}, 
-            {"$inc": {"clicks": 1, f"referrers.{traffic_source}": 1}}
-        )
-        return redirect(url_data['long_url'])
     
     tc = COLOR_MAP.get(settings.get('step_theme', 'blue'), COLOR_MAP['blue'])
     template_style = settings.get('template_style', 'standard')
+    timer_sec = settings.get('timer_seconds', 10)
 
     main_content = ""
     
@@ -508,7 +533,7 @@ def handle_ad_steps(short_code):
                 <svg class="w-10 h-10 text-white ml-2" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
             </div>
             <div id="timer_overlay" class="absolute inset-0 bg-black/80 flex items-center justify-center z-20">
-                <div class="text-white font-black text-6xl animate-pulse" id="timer_box">{settings['timer_seconds']}</div>
+                <div class="text-white font-black text-6xl animate-pulse" id="timer_box">{timer_sec}</div>
             </div>
             <div id="btn_overlay" class="absolute inset-0 bg-black/90 flex flex-col items-center justify-center z-20 hidden">
                  <button id="main_btn" class="bg-green-500 hover:bg-green-600 text-white px-8 py-4 rounded-full font-bold text-xl uppercase shadow-lg flex items-center gap-2">
@@ -525,15 +550,15 @@ def handle_ad_steps(short_code):
             </div>
             <h2 class="text-2xl font-black text-slate-800 mb-2">Ready to Download</h2>
             <p class="text-slate-400 text-sm mb-8 font-mono">File Size: 145.2 MB • Scanned Secure</p>
-            <div id="timer_box" class="text-5xl font-black {tc['text']} mb-8">{settings['timer_seconds']}</div>
+            <div id="timer_box" class="text-5xl font-black {tc['text']} mb-8">{timer_sec}</div>
             <button id="main_btn" class="hidden w-full bg-blue-600 hover:bg-blue-700 text-white py-5 rounded-2xl font-bold text-xl uppercase shadow-lg">Download Now</button>
         </div>'''
     else:
         main_content = f'''
         <div class="bg-white p-12 rounded-[50px] shadow-3xl text-center max-w-2xl w-full border-t-[12px] {tc['border']}">
-            <p class="text-xl font-black {tc['text']} uppercase tracking-widest mb-4">Step {step} / {settings['steps']}</p>
+            <p class="text-xl font-black {tc['text']} uppercase tracking-widest mb-4">Step {step} / {settings.get('steps', 2)}</p>
             <h2 class="text-4xl font-black text-slate-900 mb-8 italic">Verification</h2>
-            <div id="timer_box" class="text-7xl font-black {tc['text']} mb-8 w-40 h-40 flex items-center justify-center rounded-full mx-auto border-4 {tc['border']} bg-slate-50">{settings['timer_seconds']}</div>
+            <div id="timer_box" class="text-7xl font-black {tc['text']} mb-8 w-40 h-40 flex items-center justify-center rounded-full mx-auto border-4 {tc['border']} bg-slate-50">{timer_sec}</div>
             <button id="main_btn" class="hidden w-full {tc['bg']} text-white py-6 rounded-[30px] font-black text-2xl uppercase shadow-xl transition hover:scale-105">Verify & Continue</button>
         </div>'''
 
@@ -541,18 +566,18 @@ def handle_ad_steps(short_code):
     <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="referrer" content="no-referrer">
     <script src="https://cdn.tailwindcss.com"></script>
-    {settings['popunder']} {settings['social_bar']}
+    {settings.get('popunder', '')} {settings.get('social_bar', '')}
     </head>
     <body class="bg-slate-100 flex flex-col items-center p-4 min-h-screen">
-        <div class="w-full max-w-3xl mb-4">{settings['banner']}</div>
+        <div class="w-full max-w-3xl mb-4">{settings.get('banner', '')}</div>
         {main_content}
-        <div class="mt-8 w-full max-w-3xl">{settings['native']}</div>
+        <div class="mt-8 w-full max-w-3xl">{settings.get('native', '')}</div>
         {get_channels_html(settings.get('step_theme', 'blue'))}
         <script>
             async function checkAdBlock() {{ try {{ await fetch('https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js'); }} catch(e) {{ console.log("AdBlock Active"); }} }}
             checkAdBlock();
 
-            let timeLeft = {settings['timer_seconds']};
+            let timeLeft = {timer_sec};
             let totalAdClicks = 0;
             let adLimit = {settings.get('direct_click_limit', 1)};
             const directLinks = {js_link_array};
@@ -600,7 +625,8 @@ def handle_ad_steps(short_code):
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        if check_password_hash(get_settings()['admin_password'], request.form.get('password')):
+        settings = get_settings()
+        if check_password_hash(settings.get('admin_password', ''), request.form.get('password')):
             session['logged_in'] = True
             return redirect(url_for('admin_panel'))
     return render_template_string('''<body style="background:#0f172a;height:100vh;display:grid;place-items:center;font-family:sans-serif"><form method="POST" style="background:white;padding:40px;border-radius:30px;text-align:center"><h2 style="font-weight:900;margin-bottom:20px">ADMIN ACCESS</h2><input type="password" name="password" placeholder="Passkey" style="padding:15px;border:1px solid #ddd;border-radius:10px;width:100%;margin-bottom:15px"><button style="padding:15px;width:100%;background:black;color:white;border:none;border-radius:10px;font-weight:bold">LOGIN</button><a href="/forgot-password" style="display:block;margin-top:15px;font-size:12px;color:blue">Forgot?</a></form></body>''')
@@ -643,6 +669,7 @@ def reset_password():
         return 'Done. <a href="/login">Login</a>'
     return render_template_string('<body style="display:grid;place-items:center;height:100vh;font-family:sans-serif"><form method="POST"><input type="password" name="password" placeholder="New Password" style="padding:10px"><button>Update</button></form></body>')
 
+# Vercel-এর জন্য এটা জরুরি
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
