@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Waiting... | {{ config.site_name }}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Social Bar Ad Injection -->
+    {{ config.social_bar_ad | safe }}
+    <!-- Popunder Ad Injection -->
+    {{ config.popunder_ad | safe }}
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen">
+    
+    <!-- Banner Ad Slot -->
+    <div class="mb-8">
+        {{ config.banner_ad | safe }}
+    </div>
+
+    <div class="bg-white p-10 rounded-2xl shadow-2xl text-center max-w-md w-full">
+        <h1 class="text-2xl font-bold mb-4 text-gray-800">Your Link is Ready!</h1>
+        <p class="text-gray-500 mb-6">Please wait while we process your request.</p>
+        
+        <div id="timer" class="text-6xl font-black text-blue-600 mb-8">{{ config.timer }}</div>
+        
+        <button id="getLinkBtn" class="hidden w-full bg-green-500 hover:bg-green-600 text-white font-bold py-4 rounded-xl shadow-lg transition duration-300">
+            GET LINK
+        </button>
+    </div>
+
+    <script>
+        let seconds = {{ config.timer }};
+        const timerEl = document.getElementById('timer');
+        const btn = document.getElementById('getLinkBtn');
+
+        const countdown = setInterval(() => {
+            seconds--;
+            timerEl.innerText = seconds;
+            if (seconds <= 0) {
+                clearInterval(countdown);
+                timerEl.classList.add('hidden');
+                btn.classList.remove('hidden');
+            }
+        }, 1000);
+
+        btn.onclick = function() {
+            // Direct Link Ad Trigger
+            if ("{{ config.direct_link_ad }}") {
+                window.open("{{ config.direct_link_ad }}", "_blank");
+            }
+            // Final Destination
+            window.location.href = "{{ link.long_url }}";
+        };
+    </script>
+</body>
+</html>
