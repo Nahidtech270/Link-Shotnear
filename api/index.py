@@ -60,7 +60,6 @@ COLOR_MAP = {
 }
 
 def get_settings():
-    # ফিক্স: is None চেক ব্যবহার করা হয়েছে
     if settings_col is None:
         return {}
         
@@ -118,7 +117,6 @@ def get_traffic_source(referrer_url):
 
 # --- চ্যানেল বক্স ---
 def get_channels_html(theme_color="sky"):
-    # ফিক্স: is None ব্যবহার করা হয়েছে
     if channels_col is None: return ""
     try:
         channels = list(channels_col.find())
@@ -153,7 +151,14 @@ def api_system():
     alias = request.args.get('alias')
     res_format = request.args.get('format', 'json').lower()
     
-    if not api_token or api_token != settings.get('api_key', '').strip():
+    # API Key Verification
+    valid_key = settings.get('api_key')
+    if not valid_key:
+        # If Key missing, regenerate
+        valid_key = ''.join(random.choices(string.ascii_lowercase + string.digits, k=40))
+        settings_col.update_one({}, {"$set": {"api_key": valid_key}})
+
+    if not api_token or api_token != valid_key:
         return jsonify({"status": "error", "message": "Invalid API Token"}) if res_format != 'text' else "Error: Invalid Token"
     
     if not long_url:
@@ -186,7 +191,7 @@ def web_shorten():
     urls_col.insert_one({"long_url": long_url, "short_code": sc, "clicks": 0, "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"), "type": "web", "referrers": {}})
     return render_template_string(f'''<html><head><script src="https://cdn.tailwindcss.com"></script><meta name="viewport" content="width=device-width, initial-scale=1.0"></head><body class="bg-slate-900 flex flex-col items-center justify-center min-h-screen p-4 text-white"><div class="bg-slate-800 p-8 md:p-12 rounded-[50px] shadow-2xl text-center max-w-xl w-full border border-slate-700"><h2 class="text-3xl md:text-4xl font-black mb-8 {c['text']} uppercase italic">Success!</h2><input id="shortUrl" value="{request.host_url + sc}" readonly class="w-full bg-slate-900 p-6 rounded-2xl border border-slate-700 {c['text']} font-bold text-center mb-8 text-lg"><button onclick="copyLink()" id="copyBtn" class="w-full {c['bg']} text-white py-6 rounded-[30px] font-black text-2xl uppercase tracking-tighter transition shadow-xl">COPY LINK</button><a href="/" class="block mt-8 text-slate-500 font-bold uppercase text-xs hover:text-white transition">Create New</a></div><script>function copyLink() {{ var copyText = document.getElementById("shortUrl"); copyText.select(); navigator.clipboard.writeText(copyText.value); document.getElementById("copyBtn").innerText = "COPIED!"; }}</script></body></html>''')
 
-# --- এডমিন প্যানেল (MOBILE OPTIMIZED) ---
+# --- এডমিন প্যানেল (UPDATED with API KEY DISPLAY) ---
 @app.route('/admin')
 def admin_panel():
     if not is_logged_in(): return redirect(url_for('login'))
@@ -227,7 +232,6 @@ def admin_panel():
         .tab-content {{ display: none; animation: fadeIn 0.3s; }} 
         .tab-content.active {{ display: block; }} 
         @keyframes fadeIn {{ from {{ opacity: 0; transform: translateY(10px); }} to {{ opacity: 1; transform: translateY(0); }} }}
-        /* Hide scrollbar for clean mobile look */
         ::-webkit-scrollbar {{ width: 0px; background: transparent; }}
     </style>
     </head>
@@ -239,7 +243,7 @@ def admin_panel():
             <a href="/logout" class="bg-red-50 text-red-600 p-2 rounded-lg text-xs font-bold">LOGOUT</a>
         </div>
 
-        <!-- Desktop Sidebar (Hidden on Mobile) -->
+        <!-- Desktop Sidebar -->
         <div class="hidden lg:flex flex-col w-72 bg-white border-r h-screen fixed left-0 top-0 p-6 z-50">
             <h2 class="text-2xl font-black mb-10 italic">ADMIN <span class="text-blue-600">PRO</span></h2>
             <nav class="space-y-2 flex-1">
@@ -256,7 +260,6 @@ def admin_panel():
             
             <!-- OVERVIEW TAB -->
             <div id="overview" class="tab-content active space-y-6">
-                <!-- Stats Cards -->
                 <div class="grid grid-cols-2 gap-4">
                     <div class="bg-white p-6 rounded-[25px] shadow-sm border border-slate-100">
                         <p class="text-slate-400 text-[10px] font-bold uppercase">Links</p>
@@ -267,35 +270,27 @@ def admin_panel():
                         <h3 class="text-3xl font-black">{total_clicks}</h3>
                     </div>
                 </div>
-
-                <!-- Charts -->
                 <div class="bg-white p-6 rounded-[30px] shadow-sm border border-slate-100">
                     <h4 class="font-bold text-slate-700 mb-4 text-xs uppercase">Growth (7 Days)</h4>
                     <canvas id="linkChart" height="200"></canvas>
-                </div>
-                
-                <div class="bg-white p-6 rounded-[30px] shadow-sm border border-slate-100">
-                    <h4 class="font-bold text-slate-700 mb-4 text-xs uppercase">Traffic Sources</h4>
-                    <canvas id="sourceChart" height="200"></canvas>
-                </div>
-
-                <!-- Recent Links List (Mobile Card Style) -->
-                <div class="space-y-4">
-                    <h4 class="font-bold text-slate-400 text-xs uppercase ml-2">Recent Activities</h4>
-                    {"".join([f'''
-                    <div class="bg-white p-5 rounded-[20px] shadow-sm border border-slate-100 flex items-center justify-between">
-                        <div class="overflow-hidden">
-                            <p class="text-xs font-bold text-slate-400 mb-1">{u['created_at']}</p>
-                            <p class="text-blue-600 font-bold text-sm truncate w-40">/{u['short_code']}</p>
-                        </div>
-                        <div class="bg-slate-100 px-4 py-2 rounded-full font-black text-sm">{u['clicks']}</div>
-                    </div>
-                    ''' for u in all_urls[:10]])}
                 </div>
             </div>
 
             <!-- CONFIG TAB -->
             <div id="config" class="tab-content space-y-6">
+                <!-- API KEY SECTION (NEW) -->
+                <div class="bg-indigo-900 p-6 rounded-[30px] shadow-lg text-white">
+                    <h4 class="font-black text-lg mb-2">🔌 API Integration</h4>
+                    <p class="text-indigo-200 text-xs mb-4">Use this key in your Telegram Bot to shorten links automatically.</p>
+                    <div class="flex flex-col md:flex-row gap-2">
+                        <input type="text" value="{settings.get('api_key')}" readonly id="apiKeyField" class="w-full p-4 bg-indigo-800/50 border border-indigo-700 rounded-xl font-mono text-sm font-bold text-white outline-none">
+                        <button onclick="copyApi()" id="copyApiBtn" class="bg-white text-indigo-900 px-6 py-4 rounded-xl font-black uppercase shadow-md hover:bg-indigo-50 transition">Copy</button>
+                    </div>
+                    <div class="mt-4 text-[10px] font-mono text-indigo-300 bg-indigo-950 p-3 rounded-xl border border-indigo-800">
+                        API URL: {request.host_url}api?api=YOUR_KEY&url=LINK
+                    </div>
+                </div>
+
                 <form action="/admin/update" method="POST" class="space-y-6">
                     <div class="bg-white p-6 rounded-[30px] shadow-sm space-y-5 border border-slate-100">
                         <h4 class="font-black text-lg text-slate-900">🎨 App Design</h4>
@@ -406,15 +401,12 @@ def admin_panel():
 
         <script>
             function showTab(tabId) {{
-                // Hide all tabs
                 document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
                 
-                // Desktop Sidebar Active State
                 document.querySelectorAll('nav button').forEach(b => b.classList.remove('active-tab'));
                 const deskBtn = document.getElementById('desk-' + tabId);
                 if(deskBtn) deskBtn.classList.add('active-tab');
 
-                // Mobile Bottom Nav Active State
                 document.querySelectorAll('.fixed button').forEach(b => {{
                     b.classList.remove('text-blue-600');
                     b.classList.add('text-slate-400');
@@ -424,17 +416,20 @@ def admin_panel():
                     mobBtn.classList.remove('text-slate-400');
                     mobBtn.classList.add('text-blue-600');
                 }}
-
-                // Show Content
                 document.getElementById(tabId).classList.add('active');
             }}
             
+            function copyApi() {{
+                var copyText = document.getElementById("apiKeyField");
+                copyText.select();
+                navigator.clipboard.writeText(copyText.value);
+                document.getElementById("copyApiBtn").innerText = "COPIED!";
+                setTimeout(() => {{ document.getElementById("copyApiBtn").innerText = "COPY"; }}, 2000);
+            }}
+
             // Charts
             const ctxLink = document.getElementById('linkChart').getContext('2d');
             new Chart(ctxLink, {{ type: 'line', data: {{ labels: {json.dumps(dates)}, datasets: [{{ label: 'Links', data: {json.dumps(chart_data)}, borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.1)', tension: 0.4, fill: true }}] }}, options: {{ responsive: true, plugins: {{ legend: {{ display: false }} }} }} }});
-            
-            const ctxSource = document.getElementById('sourceChart').getContext('2d');
-            new Chart(ctxSource, {{ type: 'doughnut', data: {{ labels: {json.dumps(source_labels)}, datasets: [{{ data: {json.dumps(source_data)}, backgroundColor: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444'], borderWidth: 0 }}] }}, options: {{ responsive: true, plugins: {{ legend: {{ position: 'bottom' }} }} }} }});
         </script>
     </body></html>
     ''')
@@ -507,6 +502,7 @@ def update_settings():
         "main_theme": request.form.get('main_theme'),
         "step_theme": request.form.get('step_theme'),
         "template_style": request.form.get('template_style', 'standard'),
+        # Ensure API key is preserved if not in form
         "api_key": raw_api if raw_api else get_settings().get('api_key')
     }
     new_pass = request.form.get('new_password')
