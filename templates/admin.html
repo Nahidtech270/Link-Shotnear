@@ -1,0 +1,19 @@
+<!-- Admin Form Section -->
+<form method="POST">
+    <label>Site Name</label>
+    <input name="site_name" value="{{ config.site_name }}">
+    
+    <label>Popunder Script (Adsterra/Others)</label>
+    <textarea name="popunder_ad">{{ config.popunder_ad }}</textarea>
+    
+    <label>Social Bar Script</label>
+    <textarea name="social_bar_ad">{{ config.social_bar_ad }}</textarea>
+    
+    <label>Banner Ad Code (728x90)</label>
+    <textarea name="banner_ad">{{ config.banner_ad }}</textarea>
+    
+    <label>Direct Link URL</label>
+    <input name="direct_link_ad" value="{{ config.direct_link_ad }}">
+    
+    <button type="submit">Update Everything</button>
+</form>
