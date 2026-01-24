@@ -4,7 +4,7 @@ import string
 import json
 import requests
 from urllib.parse import urlparse
-from flask import Flask, render_template_string, request, redirect, url_for, jsonify, session
+from flask import Flask, render_template_string, request, redirect, url_for, jsonify, session, abort
 from pymongo import MongoClient
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
@@ -14,12 +14,11 @@ from collections import Counter
 app = Flask(__name__)
 
 # --- কনফিগারেশন ---
-# Vercel-এ কাজ করার জন্য ডিফল্ট কি সেট করা হলো, তবে আপনি Environment Variable সেট করবেন
 app.secret_key = os.environ.get("SECRET_KEY", "premium-super-secret-key-2025")
 MONGO_URI = os.environ.get("MONGO_URI") 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8469682967:AAEWrNWBWjiYT3_L47Xe_byORfD6IIsFD34")
 
-# --- ডাটাবেস কানেকশন ---
+# --- ডাটাবেস কানেকশন ভেরিয়েবল ---
 client = None
 db = None
 urls_col = None
@@ -28,6 +27,7 @@ channels_col = None
 otp_col = None
 direct_links_col = None
 
+# --- ইনিশিয়ালাইজেশন ---
 if MONGO_URI:
     try:
         client = MongoClient(MONGO_URI, tlsAllowInvalidCertificates=True, serverSelectionTimeoutMS=5000)
@@ -38,7 +38,7 @@ if MONGO_URI:
         otp_col = db['otps']
         direct_links_col = db['direct_links']
         
-        # ইনডেক্সিং
+        # ইনডেক্সিং চেষ্টা করা (ফেইল করলে সমস্যা নেই)
         try:
             urls_col.create_index("short_code", unique=True)
             urls_col.create_index("created_at")
@@ -60,25 +60,30 @@ COLOR_MAP = {
 }
 
 def get_settings():
-    if not settings_col:
+    # ফিক্স: is None চেক ব্যবহার করা হয়েছে
+    if settings_col is None:
         return {}
-    settings = settings_col.find_one()
-    if not settings:
-        default_settings = {
-            "site_name": "Premium URL Shortener",
-            "admin_telegram_id": "", 
-            "steps": 2,
-            "timer_seconds": 10,
-            "admin_password": generate_password_hash("admin123"),
-            "api_key": ''.join(random.choices(string.ascii_lowercase + string.digits, k=40)),
-            "popunder": "", "banner": "", "social_bar": "", "native": "",
-            "direct_click_limit": 1,
-            "main_theme": "sky", "step_theme": "blue",
-            "template_style": "standard"
-        }
-        settings_col.insert_one(default_settings)
-        return default_settings
-    return settings
+        
+    try:
+        settings = settings_col.find_one()
+        if not settings:
+            default_settings = {
+                "site_name": "Premium URL Shortener",
+                "admin_telegram_id": "", 
+                "steps": 2,
+                "timer_seconds": 10,
+                "admin_password": generate_password_hash("admin123"),
+                "api_key": ''.join(random.choices(string.ascii_lowercase + string.digits, k=40)),
+                "popunder": "", "banner": "", "social_bar": "", "native": "",
+                "direct_click_limit": 1,
+                "main_theme": "sky", "step_theme": "blue",
+                "template_style": "standard"
+            }
+            settings_col.insert_one(default_settings)
+            return default_settings
+        return settings
+    except:
+        return {}
 
 def is_logged_in():
     return session.get('logged_in')
@@ -113,24 +118,34 @@ def get_traffic_source(referrer_url):
 
 # --- চ্যানেল বক্স ---
 def get_channels_html(theme_color="sky"):
-    if not channels_col: return ""
-    channels = list(channels_col.find())
-    if not channels: return ""
-    c = COLOR_MAP.get(theme_color, COLOR_MAP['sky'])
-    html = f'''<div class="w-full max-w-5xl mx-auto mt-8 mb-8 p-4 md:p-6 rounded-[30px] border border-white/10 glass shadow-xl">
-        <h3 class="text-center {c['text']} font-black mb-6 uppercase tracking-[0.2em] text-sm">Sponsored Channels</h3>
-        <div class="flex flex-col items-center gap-6">'''
-    for ch in channels:
-        html += f'''<a href="{ch['link']}" target="_blank" class="flex flex-col items-center gap-2 group transition-transform hover:scale-105 w-full">
-            <img src="{ch['logo']}" class="w-full max-w-md h-auto object-cover border border-white/10 rounded-xl group-hover:border-white/30 shadow-lg transition">
-            <span class="text-xs font-bold text-gray-300 uppercase tracking-widest bg-white/5 px-4 py-1 rounded-full">{ch.get('name', 'Join Now')}</span>
-        </a>'''
-    return html + '</div></div>'
+    # ফিক্স: is None ব্যবহার করা হয়েছে
+    if channels_col is None: return ""
+    try:
+        channels = list(channels_col.find())
+        if not channels: return ""
+        c = COLOR_MAP.get(theme_color, COLOR_MAP['sky'])
+        html = f'''<div class="w-full max-w-5xl mx-auto mt-8 mb-8 p-4 md:p-6 rounded-[30px] border border-white/10 glass shadow-xl">
+            <h3 class="text-center {c['text']} font-black mb-6 uppercase tracking-[0.2em] text-sm">Sponsored Channels</h3>
+            <div class="flex flex-col items-center gap-6">'''
+        for ch in channels:
+            html += f'''<a href="{ch['link']}" target="_blank" class="flex flex-col items-center gap-2 group transition-transform hover:scale-105 w-full">
+                <img src="{ch['logo']}" class="w-full max-w-md h-auto object-cover border border-white/10 rounded-xl group-hover:border-white/30 shadow-lg transition">
+                <span class="text-xs font-bold text-gray-300 uppercase tracking-widest bg-white/5 px-4 py-1 rounded-full">{ch.get('name', 'Join Now')}</span>
+            </a>'''
+        return html + '</div></div>'
+    except:
+        return ""
+
+# --- Favicon Fix ---
+@app.route('/favicon.ico')
+def favicon():
+    return abort(404)
 
 # --- API ---
 @app.route('/api')
 def api_system():
-    if not urls_col: return jsonify({"status": "error", "message": "Database Error"})
+    if urls_col is None: return jsonify({"status": "error", "message": "Database Error"})
+    
     settings = get_settings()
     raw_token = request.args.get('api') or request.args.get('api_key') or request.args.get('key')
     api_token = raw_token.strip() if raw_token else None
@@ -153,14 +168,19 @@ def api_system():
 @app.route('/')
 def index():
     settings = get_settings()
-    c = COLOR_MAP.get(settings.get('main_theme', 'sky'), COLOR_MAP['sky'])
-    return render_template_string(f'''<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://cdn.tailwindcss.com"></script><title>{settings.get('site_name', 'Shortener')}</title><style>body {{ background: #0f172a; color: white; }} .glass {{ background: rgba(255,255,255,0.03); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); }}</style></head><body class="min-h-screen flex flex-col items-center justify-center p-6 text-center"><h1 class="text-5xl md:text-8xl font-black mb-4 {c['text']} italic tracking-tighter uppercase">{settings.get('site_name', 'Shortener')}</h1><p class="text-gray-400 mb-12 text-lg md:text-xl font-bold uppercase tracking-widest">Enterprise Link Management</p><div class="glass p-5 rounded-[40px] w-full max-w-3xl shadow-3xl mb-8"><form action="/shorten" method="POST" class="flex flex-col md:flex-row gap-4"><input type="url" name="long_url" placeholder="PASTE LINK HERE..." required class="flex-1 bg-transparent p-5 outline-none text-white text-xl font-bold placeholder:text-slate-600"><button type="submit" class="{c['bg']} text-white px-10 py-5 rounded-[30px] font-black text-xl hover:scale-105 transition uppercase shadow-xl w-full md:w-auto">Shorten</button></form></div>{get_channels_html(settings.get('main_theme', 'sky'))}</body></html>''')
+    site_name = settings.get('site_name', 'Shortener') if settings else 'Shortener'
+    theme = settings.get('main_theme', 'sky') if settings else 'sky'
+    c = COLOR_MAP.get(theme, COLOR_MAP['sky'])
+    
+    return render_template_string(f'''<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://cdn.tailwindcss.com"></script><title>{site_name}</title><style>body {{ background: #0f172a; color: white; }} .glass {{ background: rgba(255,255,255,0.03); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); }}</style></head><body class="min-h-screen flex flex-col items-center justify-center p-6 text-center"><h1 class="text-5xl md:text-8xl font-black mb-4 {c['text']} italic tracking-tighter uppercase">{site_name}</h1><p class="text-gray-400 mb-12 text-lg md:text-xl font-bold uppercase tracking-widest">Enterprise Link Management</p><div class="glass p-5 rounded-[40px] w-full max-w-3xl shadow-3xl mb-8"><form action="/shorten" method="POST" class="flex flex-col md:flex-row gap-4"><input type="url" name="long_url" placeholder="PASTE LINK HERE..." required class="flex-1 bg-transparent p-5 outline-none text-white text-xl font-bold placeholder:text-slate-600"><button type="submit" class="{c['bg']} text-white px-10 py-5 rounded-[30px] font-black text-xl hover:scale-105 transition uppercase shadow-xl w-full md:w-auto">Shorten</button></form></div>{get_channels_html(theme)}</body></html>''')
 
 @app.route('/shorten', methods=['POST'])
 def web_shorten():
-    if not urls_col: return "Database Error"
+    if urls_col is None: return "Database Error"
     settings = get_settings()
-    c = COLOR_MAP.get(settings.get('main_theme', 'sky'), COLOR_MAP['sky'])
+    theme = settings.get('main_theme', 'sky') if settings else 'sky'
+    c = COLOR_MAP.get(theme, COLOR_MAP['sky'])
+    
     long_url = request.form.get('long_url')
     sc = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
     urls_col.insert_one({"long_url": long_url, "short_code": sc, "clicks": 0, "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"), "type": "web", "referrers": {}})
@@ -170,12 +190,15 @@ def web_shorten():
 @app.route('/admin')
 def admin_panel():
     if not is_logged_in(): return redirect(url_for('login'))
-    if not urls_col: return "Database Error"
+    if urls_col is None: return "Database Error"
+    
     settings = get_settings()
+    
+    # ডাটা রিট্রিভ করা
     all_urls = list(urls_col.find().sort("_id", -1))
     total_clicks = sum(u.get('clicks', 0) for u in all_urls)
-    channels = list(channels_col.find())
-    direct_links = list(direct_links_col.find())
+    channels = list(channels_col.find()) if channels_col is not None else []
+    direct_links = list(direct_links_col.find()) if direct_links_col is not None else []
     
     # Analytics Data
     today = datetime.now()
@@ -420,6 +443,8 @@ def admin_panel():
 @app.route('/admin/bulk_shorten', methods=['POST'])
 def bulk_shorten():
     if not is_logged_in(): return redirect(url_for('login'))
+    if urls_col is None: return "Database Error"
+    
     raw_text = request.form.get('bulk_urls', '')
     urls = [u.strip() for u in raw_text.split('\n') if u.strip()]
     if urls:
@@ -430,6 +455,8 @@ def bulk_shorten():
 @app.route('/admin/add_direct_link', methods=['POST'])
 def add_direct_link():
     if not is_logged_in(): return redirect(url_for('login'))
+    if direct_links_col is None: return "Database Error"
+    
     url = request.form.get('direct_link_url')
     country = request.form.get('country', 'Global')
     device = request.form.get('device', 'All')
@@ -439,12 +466,16 @@ def add_direct_link():
 @app.route('/admin/delete_direct_link/<id>')
 def delete_direct_link(id):
     if not is_logged_in(): return redirect(url_for('login'))
+    if direct_links_col is None: return "Database Error"
+    
     direct_links_col.delete_one({"_id": ObjectId(id)})
     return redirect(url_for('admin_panel'))
 
 @app.route('/admin/add_channel', methods=['POST'])
 def add_channel():
     if not is_logged_in(): return redirect(url_for('login'))
+    if channels_col is None: return "Database Error"
+    
     name, logo, link = request.form.get('name'), request.form.get('logo'), request.form.get('link')
     if logo and link: channels_col.insert_one({"name": name, "logo": logo, "link": link})
     return redirect(url_for('admin_panel'))
@@ -452,12 +483,16 @@ def add_channel():
 @app.route('/admin/delete_channel/<id>')
 def delete_channel(id):
     if not is_logged_in(): return redirect(url_for('login'))
+    if channels_col is None: return "Database Error"
+    
     channels_col.delete_one({"_id": ObjectId(id)})
     return redirect(url_for('admin_panel'))
 
 @app.post('/admin/update')
 def update_settings():
     if not is_logged_in(): return redirect(url_for('login'))
+    if settings_col is None: return "Database Error"
+    
     raw_api = request.form.get('api_key', '').strip()
     d = {
         "site_name": request.form.get('site_name'),
@@ -482,7 +517,10 @@ def update_settings():
 @app.route('/<short_code>')
 def handle_ad_steps(short_code):
     settings = get_settings()
-    if not urls_col: return "System Error"
+    
+    # ডাটাবেস চেক (None চেক)
+    if urls_col is None or settings_col is None: 
+        return "System Maintenance Mode"
     
     step = int(request.args.get('step', 1))
     url_data = urls_col.find_one({"short_code": short_code})
@@ -506,15 +544,18 @@ def handle_ad_steps(short_code):
     user_country = get_user_country(user_ip)
     user_device = get_user_device() 
     
-    all_links = list(direct_links_col.find({
-        "$and": [
-            {"$or": [{"country": user_country}, {"country": "Global"}, {"country": {"$exists": False}}]},
-            {"$or": [{"device": user_device}, {"device": "All"}, {"device": {"$exists": False}}]}
-        ]
-    }))
-    
-    targeted = [l['url'] for l in all_links if l.get('country') == user_country]
-    link_list = targeted if targeted else [l['url'] for l in all_links]
+    if direct_links_col is not None:
+        all_links = list(direct_links_col.find({
+            "$and": [
+                {"$or": [{"country": user_country}, {"country": "Global"}, {"country": {"$exists": False}}]},
+                {"$or": [{"device": user_device}, {"device": "All"}, {"device": {"$exists": False}}]}
+            ]
+        }))
+        targeted = [l['url'] for l in all_links if l.get('country') == user_country]
+        link_list = targeted if targeted else [l['url'] for l in all_links]
+    else:
+        link_list = []
+
     if not link_list: link_list = ["https://google.com"]
 
     js_link_array = json.dumps(link_list)
@@ -643,10 +684,11 @@ def forgot_password():
         settings = get_settings()
         if tg_id and tg_id == settings.get('admin_telegram_id'):
             otp = str(random.randint(100000, 999999))
-            otp_col.update_one({"id": "admin_reset"}, {"$set": {"otp": otp, "expire_at": datetime.now() + timedelta(minutes=5)}}, upsert=True)
-            requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", data={"chat_id": tg_id, "text": f"OTP: {otp}"})
-            session['reset_id'] = tg_id
-            return redirect(url_for('verify_otp'))
+            if otp_col is not None:
+                otp_col.update_one({"id": "admin_reset"}, {"$set": {"otp": otp, "expire_at": datetime.now() + timedelta(minutes=5)}}, upsert=True)
+                requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", data={"chat_id": tg_id, "text": f"OTP: {otp}"})
+                session['reset_id'] = tg_id
+                return redirect(url_for('verify_otp'))
     return render_template_string('<body style="display:grid;place-items:center;height:100vh;font-family:sans-serif"><form method="POST"><input name="telegram_id" placeholder="Telegram ID" style="padding:10px"><button>Send OTP</button></form></body>')
 
 @app.route('/verify-otp', methods=['GET', 'POST'])
@@ -654,22 +696,23 @@ def verify_otp():
     if not session.get('reset_id'): return redirect('/forgot-password')
     if request.method == 'POST':
         otp = request.form.get('otp')
-        data = otp_col.find_one({"id": "admin_reset"})
-        if data and data['otp'] == otp and data['expire_at'] > datetime.now():
-            session['otp_verified'] = True
-            return redirect(url_for('reset_password'))
+        if otp_col is not None:
+            data = otp_col.find_one({"id": "admin_reset"})
+            if data and data['otp'] == otp and data['expire_at'] > datetime.now():
+                session['otp_verified'] = True
+                return redirect(url_for('reset_password'))
     return render_template_string('<body style="display:grid;place-items:center;height:100vh;font-family:sans-serif"><form method="POST"><input name="otp" placeholder="OTP" style="padding:10px"><button>Verify</button></form></body>')
 
 @app.route('/reset-password', methods=['GET', 'POST'])
 def reset_password():
     if not session.get('otp_verified'): return redirect('/forgot-password')
     if request.method == 'POST':
-        settings_col.update_one({}, {"$set": {"admin_password": generate_password_hash(request.form.get('password'))}})
-        session.clear()
-        return 'Done. <a href="/login">Login</a>'
+        if settings_col is not None:
+            settings_col.update_one({}, {"$set": {"admin_password": generate_password_hash(request.form.get('password'))}})
+            session.clear()
+            return 'Done. <a href="/login">Login</a>'
     return render_template_string('<body style="display:grid;place-items:center;height:100vh;font-family:sans-serif"><form method="POST"><input type="password" name="password" placeholder="New Password" style="padding:10px"><button>Update</button></form></body>')
 
-# Vercel-এর জন্য এটা জরুরি
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
