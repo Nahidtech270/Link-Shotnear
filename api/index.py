@@ -18,7 +18,7 @@ app.secret_key = os.environ.get("SECRET_KEY", "premium-super-secret-key-2025")
 MONGO_URI = os.environ.get("MONGO_URI") 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8469682967:AAEWrNWBWjiYT3_L47Xe_byORfD6IIsFD34")
 
-# --- ডাটাবেস কানেকশন ভেরিয়েবল ---
+# --- ডাটাবেস ভেরিয়েবল ইনিশিয়ালাইজেশন ---
 client = None
 db = None
 urls_col = None
@@ -27,7 +27,7 @@ channels_col = None
 otp_col = None
 direct_links_col = None
 
-# --- ইনিশিয়ালাইজেশন ---
+# --- ডাটাবেস কানেকশন ---
 if MONGO_URI:
     try:
         client = MongoClient(MONGO_URI, tlsAllowInvalidCertificates=True, serverSelectionTimeoutMS=5000)
@@ -38,7 +38,7 @@ if MONGO_URI:
         otp_col = db['otps']
         direct_links_col = db['direct_links']
         
-        # ইনডেক্সিং চেষ্টা করা (ফেইল করলে সমস্যা নেই)
+        # ইনডেক্সিং (অপশনাল)
         try:
             urls_col.create_index("short_code", unique=True)
             urls_col.create_index("created_at")
@@ -47,7 +47,7 @@ if MONGO_URI:
     except Exception as e:
         print(f"DB Connection Error: {e}")
 else:
-    print("Warning: MONGO_URI is not set! App will not work correctly.")
+    print("Warning: MONGO_URI is not set!")
 
 # --- থিম কালার ম্যাপ ---
 COLOR_MAP = {
@@ -59,10 +59,12 @@ COLOR_MAP = {
     "slate": {"text": "text-slate-400", "bg": "bg-slate-700", "border": "border-slate-500", "hover": "hover:bg-slate-800", "light_bg": "bg-slate-50"}
 }
 
+# --- সেটিংস লোড করা ---
 def get_settings():
+    # IMPORTANT FIX: Collection object check fixed
     if settings_col is None:
         return {}
-        
+    
     try:
         settings = settings_col.find_one()
         if not settings:
@@ -81,7 +83,8 @@ def get_settings():
             settings_col.insert_one(default_settings)
             return default_settings
         return settings
-    except:
+    except Exception as e:
+        print(f"Error fetching settings: {e}")
         return {}
 
 def is_logged_in():
@@ -134,9 +137,13 @@ def get_channels_html(theme_color="sky"):
     except:
         return ""
 
-# --- Favicon Fix ---
+# --- Favicon Fix (Log clean up) ---
 @app.route('/favicon.ico')
 def favicon():
+    return abort(404)
+
+@app.route('/favicon.png')
+def favicon_png():
     return abort(404)
 
 # --- API ---
@@ -151,12 +158,12 @@ def api_system():
     alias = request.args.get('alias')
     res_format = request.args.get('format', 'json').lower()
     
-    # API Key Verification
+    # API Key Validation / Generation
     valid_key = settings.get('api_key')
     if not valid_key:
-        # If Key missing, regenerate
         valid_key = ''.join(random.choices(string.ascii_lowercase + string.digits, k=40))
-        settings_col.update_one({}, {"$set": {"api_key": valid_key}})
+        if settings_col is not None:
+            settings_col.update_one({}, {"$set": {"api_key": valid_key}})
 
     if not api_token or api_token != valid_key:
         return jsonify({"status": "error", "message": "Invalid API Token"}) if res_format != 'text' else "Error: Invalid Token"
@@ -165,9 +172,20 @@ def api_system():
         return jsonify({"status": "error", "message": "Missing URL"}) if res_format != 'text' else "Error: Missing URL"
 
     short_code = alias if alias else ''.join(random.choices(string.ascii_letters + string.digits, k=6))
-    urls_col.insert_one({"long_url": long_url, "short_code": short_code, "clicks": 0, "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"), "type": "api", "referrers": {}})
-    shortened_url = request.host_url + short_code
-    return shortened_url if res_format == 'text' else jsonify({"status": "success", "shortenedUrl": shortened_url})
+    
+    try:
+        urls_col.insert_one({
+            "long_url": long_url, 
+            "short_code": short_code, 
+            "clicks": 0, 
+            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"), 
+            "type": "api", 
+            "referrers": {}
+        })
+        shortened_url = request.host_url + short_code
+        return shortened_url if res_format == 'text' else jsonify({"status": "success", "shortenedUrl": shortened_url})
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)})
 
 # --- হোম পেজ ---
 @app.route('/')
@@ -191,7 +209,7 @@ def web_shorten():
     urls_col.insert_one({"long_url": long_url, "short_code": sc, "clicks": 0, "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"), "type": "web", "referrers": {}})
     return render_template_string(f'''<html><head><script src="https://cdn.tailwindcss.com"></script><meta name="viewport" content="width=device-width, initial-scale=1.0"></head><body class="bg-slate-900 flex flex-col items-center justify-center min-h-screen p-4 text-white"><div class="bg-slate-800 p-8 md:p-12 rounded-[50px] shadow-2xl text-center max-w-xl w-full border border-slate-700"><h2 class="text-3xl md:text-4xl font-black mb-8 {c['text']} uppercase italic">Success!</h2><input id="shortUrl" value="{request.host_url + sc}" readonly class="w-full bg-slate-900 p-6 rounded-2xl border border-slate-700 {c['text']} font-bold text-center mb-8 text-lg"><button onclick="copyLink()" id="copyBtn" class="w-full {c['bg']} text-white py-6 rounded-[30px] font-black text-2xl uppercase tracking-tighter transition shadow-xl">COPY LINK</button><a href="/" class="block mt-8 text-slate-500 font-bold uppercase text-xs hover:text-white transition">Create New</a></div><script>function copyLink() {{ var copyText = document.getElementById("shortUrl"); copyText.select(); navigator.clipboard.writeText(copyText.value); document.getElementById("copyBtn").innerText = "COPIED!"; }}</script></body></html>''')
 
-# --- এডমিন প্যানেল (UPDATED with API KEY DISPLAY) ---
+# --- এডমিন প্যানেল ---
 @app.route('/admin')
 def admin_panel():
     if not is_logged_in(): return redirect(url_for('login'))
@@ -199,11 +217,20 @@ def admin_panel():
     
     settings = get_settings()
     
-    # ডাটা রিট্রিভ করা
-    all_urls = list(urls_col.find().sort("_id", -1))
-    total_clicks = sum(u.get('clicks', 0) for u in all_urls)
-    channels = list(channels_col.find()) if channels_col is not None else []
-    direct_links = list(direct_links_col.find()) if direct_links_col is not None else []
+    # ডাটা রিট্রিভ
+    try:
+        all_urls = list(urls_col.find().sort("_id", -1))
+        total_clicks = sum(u.get('clicks', 0) for u in all_urls)
+        
+        channels = []
+        if channels_col is not None:
+            channels = list(channels_col.find())
+            
+        direct_links = []
+        if direct_links_col is not None:
+            direct_links = list(direct_links_col.find())
+    except Exception as e:
+        return f"Data Error: {e}"
     
     # Analytics Data
     today = datetime.now()
@@ -219,6 +246,9 @@ def admin_panel():
     source_labels = list(top_sources.keys()) if top_sources else ["No Data"]
     source_data = list(top_sources.values()) if top_sources else [1]
     theme_options = sorted(COLOR_MAP.keys())
+    
+    # Ensure API Key exists for display
+    current_api_key = settings.get('api_key', 'Generate Key First')
 
     return render_template_string(f'''
     <html><head>
@@ -237,13 +267,11 @@ def admin_panel():
     </head>
     <body class="flex flex-col min-h-screen">
         
-        <!-- Mobile Header -->
         <div class="lg:hidden bg-white p-5 sticky top-0 z-40 border-b shadow-sm flex justify-between items-center">
             <span class="font-black text-xl italic tracking-tighter">ADMIN<span class="text-blue-600">PANEL</span></span>
             <a href="/logout" class="bg-red-50 text-red-600 p-2 rounded-lg text-xs font-bold">LOGOUT</a>
         </div>
 
-        <!-- Desktop Sidebar -->
         <div class="hidden lg:flex flex-col w-72 bg-white border-r h-screen fixed left-0 top-0 p-6 z-50">
             <h2 class="text-2xl font-black mb-10 italic">ADMIN <span class="text-blue-600">PRO</span></h2>
             <nav class="space-y-2 flex-1">
@@ -255,10 +283,8 @@ def admin_panel():
             <a href="/logout" class="p-4 bg-red-50 text-red-600 rounded-xl text-center font-bold">Logout</a>
         </div>
 
-        <!-- Content Area -->
         <div class="flex-1 p-4 md:p-8 lg:ml-72">
             
-            <!-- OVERVIEW TAB -->
             <div id="overview" class="tab-content active space-y-6">
                 <div class="grid grid-cols-2 gap-4">
                     <div class="bg-white p-6 rounded-[25px] shadow-sm border border-slate-100">
@@ -276,14 +302,13 @@ def admin_panel():
                 </div>
             </div>
 
-            <!-- CONFIG TAB -->
             <div id="config" class="tab-content space-y-6">
-                <!-- API KEY SECTION (NEW) -->
+                <!-- API KEY SECTION -->
                 <div class="bg-indigo-900 p-6 rounded-[30px] shadow-lg text-white">
                     <h4 class="font-black text-lg mb-2">🔌 API Integration</h4>
                     <p class="text-indigo-200 text-xs mb-4">Use this key in your Telegram Bot to shorten links automatically.</p>
                     <div class="flex flex-col md:flex-row gap-2">
-                        <input type="text" value="{settings.get('api_key')}" readonly id="apiKeyField" class="w-full p-4 bg-indigo-800/50 border border-indigo-700 rounded-xl font-mono text-sm font-bold text-white outline-none">
+                        <input type="text" value="{current_api_key}" readonly id="apiKeyField" class="w-full p-4 bg-indigo-800/50 border border-indigo-700 rounded-xl font-mono text-sm font-bold text-white outline-none">
                         <button onclick="copyApi()" id="copyApiBtn" class="bg-white text-indigo-900 px-6 py-4 rounded-xl font-black uppercase shadow-md hover:bg-indigo-50 transition">Copy</button>
                     </div>
                     <div class="mt-4 text-[10px] font-mono text-indigo-300 bg-indigo-950 p-3 rounded-xl border border-indigo-800">
@@ -329,7 +354,6 @@ def admin_panel():
                 </form>
             </div>
 
-            <!-- BULK TAB -->
             <div id="bulk" class="tab-content space-y-6">
                 <div class="bg-white p-6 rounded-[30px] shadow-sm border border-slate-100">
                     <h4 class="font-black text-xl text-slate-900 mb-4">🚀 Bulk Creator</h4>
@@ -340,7 +364,6 @@ def admin_panel():
                 </div>
             </div>
 
-            <!-- LINKS TAB -->
             <div id="links" class="tab-content space-y-6">
                  <div class="bg-white p-6 rounded-[30px] shadow-sm border border-slate-100">
                      <h4 class="font-black text-xl text-purple-600 mb-4">🔗 Direct Links</h4>
@@ -379,7 +402,6 @@ def admin_panel():
             </div>
         </div>
 
-        <!-- MOBILE BOTTOM NAVIGATION (Fixed) -->
         <div class="lg:hidden fixed bottom-0 w-full bg-white border-t flex justify-around p-3 z-50 shadow-[0_-5px_20px_rgba(0,0,0,0.05)] pb-6">
             <button onclick="showTab('overview')" id="mob-overview" class="flex flex-col items-center gap-1 active-tab-text text-slate-400">
                 <span class="text-xl">📊</span>
@@ -427,14 +449,13 @@ def admin_panel():
                 setTimeout(() => {{ document.getElementById("copyApiBtn").innerText = "COPY"; }}, 2000);
             }}
 
-            // Charts
             const ctxLink = document.getElementById('linkChart').getContext('2d');
             new Chart(ctxLink, {{ type: 'line', data: {{ labels: {json.dumps(dates)}, datasets: [{{ label: 'Links', data: {json.dumps(chart_data)}, borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.1)', tension: 0.4, fill: true }}] }}, options: {{ responsive: true, plugins: {{ legend: {{ display: false }} }} }} }});
         </script>
     </body></html>
     ''')
 
-# --- রাউটস ---
+# --- রাউটস (পোস্ট এবং ডিলিট) ---
 @app.route('/admin/bulk_shorten', methods=['POST'])
 def bulk_shorten():
     if not is_logged_in(): return redirect(url_for('login'))
@@ -489,6 +510,8 @@ def update_settings():
     if settings_col is None: return "Database Error"
     
     raw_api = request.form.get('api_key', '').strip()
+    current_settings = get_settings()
+    
     d = {
         "site_name": request.form.get('site_name'),
         "admin_telegram_id": request.form.get('admin_telegram_id'),
@@ -502,11 +525,14 @@ def update_settings():
         "main_theme": request.form.get('main_theme'),
         "step_theme": request.form.get('step_theme'),
         "template_style": request.form.get('template_style', 'standard'),
-        # Ensure API key is preserved if not in form
-        "api_key": raw_api if raw_api else get_settings().get('api_key')
+        # যদি ফর্মে API কী না থাকে, তাহলে আগেরটিই রাখব
+        "api_key": raw_api if raw_api else current_settings.get('api_key')
     }
+    
     new_pass = request.form.get('new_password')
-    if new_pass and len(new_pass) > 2: d["admin_password"] = generate_password_hash(new_pass)
+    if new_pass and len(new_pass) > 2: 
+        d["admin_password"] = generate_password_hash(new_pass)
+        
     settings_col.update_one({}, {"$set": d})
     return redirect(url_for('admin_panel'))
 
@@ -514,7 +540,6 @@ def update_settings():
 def handle_ad_steps(short_code):
     settings = get_settings()
     
-    # ডাটাবেস চেক (None চেক)
     if urls_col is None or settings_col is None: 
         return "System Maintenance Mode"
     
@@ -529,10 +554,13 @@ def handle_ad_steps(short_code):
         referrer = request.referrer
         traffic_source = get_traffic_source(referrer)
         
-        urls_col.update_one(
-            {"short_code": short_code}, 
-            {"$inc": {"clicks": 1, f"referrers.{traffic_source}": 1}}
-        )
+        try:
+            urls_col.update_one(
+                {"short_code": short_code}, 
+                {"$inc": {"clicks": 1, f"referrers.{traffic_source}": 1}}
+            )
+        except:
+            pass
         return redirect(url_data['long_url'])
     
     # Ad Logic
