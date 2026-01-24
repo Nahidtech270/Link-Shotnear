@@ -33,7 +33,7 @@ stats_col = db['stats']         # ভিজিটর স্ট্যাটাস
 
 # --- টেলিগ্রাম সেটিংস ---
 # পাসওয়ার্ড ভুলে গেলে এই বটের মাধ্যমে OTP যাবে
-TELEGRAM_BOT_TOKEN = "8552256920:AAF6iyUJjJNsCUBVHm_XrxCxtlbnJtqnF2U"
+TELEGRAM_BOT_TOKEN = "8229806805:AAEmi3zJcbUrGuCm_Ro2v6KmCACbCBfvRrM"
 
 # কালার থিম ম্যাপ (সাইটের কালার পরিবর্তনের জন্য)
 COLOR_MAP = {
