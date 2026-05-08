@@ -59,7 +59,7 @@ def get_settings():
             "timer_seconds": 10,
             "admin_password": generate_password_hash("admin123"),
             "api_key": ''.join(random.choices(string.ascii_lowercase + string.digits, k=40)),
-            "popunder": "", "banner": "", "social_bar": "", "native": "",
+            "popunder": "", "banner": "", "social_bar": "", "native": "", "cpa_script": "",
             "direct_click_limit": 1,
             "main_theme": "sky", "step_theme": "blue"
         }
@@ -96,7 +96,7 @@ def get_channels_html(theme_color="sky"):
         html += f'<a href="{ch["link"]}" target="_blank" class="flex flex-col items-center gap-3 group transition hover:scale-105"><div><p class="text-lg font-black text-gray-100 uppercase italic tracking-wider">{ch.get("name", "Join Channel")}</p></div><img src="{ch["logo"]}" class="w-full max-w-[320px] h-[180px] object-cover border-2 border-white/10 rounded-lg shadow-2xl"></a>'
     return html + '</div></div>'
 
-# --- API সিস্টেম (অন্য ডেভেলপারদের আপনার সার্ভিস ব্যবহারের জন্য) ---
+# --- API সিস্টেম ---
 @app.route('/api')
 def api_system():
     settings = get_settings()
@@ -109,10 +109,11 @@ def api_system():
     if not long_url:
         return jsonify({"status": "error", "message": "Missing URL"}) if res_format != 'text' else "Error: Missing URL"
     sc = alias if alias else ''.join(random.choices(string.ascii_letters + string.digits, k=6))
-    urls_col.insert_one({"long_url": long_url, "short_code": sc, "clicks": 0, "created_at": datetime.now().strftime("%Y-%m-%d %H:%M")})
+    # API দিয়ে তৈরি লিংক ডিফল্টভাবে নরমাল (CPA ছাড়া) হবে
+    urls_col.insert_one({"long_url": long_url, "short_code": sc, "clicks": 0, "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"), "is_locked": False})
     return request.host_url + sc if res_format == 'text' else jsonify({"status": "success", "shortenedUrl": request.host_url + sc})
 
-# --- হোম পেজ (Premium UI) ---
+# --- হোম পেজ (Premium UI with CPA Checkbox) ---
 @app.route('/')
 def index():
     settings = get_settings()
@@ -134,7 +135,6 @@ def index():
     </head>
     <body class="min-h-screen flex flex-col items-center justify-center p-4 text-center">
         
-        <!-- Hero Section -->
         <div class="max-w-5xl mx-auto w-full mb-12 mt-10">
             <div class="inline-block px-4 py-2 rounded-full glass-panel text-sm font-bold {c['text']} mb-6 tracking-widest uppercase">
                 <i class="fas fa-rocket mr-2"></i> Fast & Secure Link Shortening
@@ -145,21 +145,28 @@ def index():
             <p class="text-gray-400 text-lg md:text-2xl font-medium tracking-wide">Monetize your traffic with the highest paying shortener.</p>
         </div>
 
-        <!-- Shortener Box -->
-        <div class="glass-panel p-3 md:p-4 rounded-[40px] w-full max-w-4xl relative z-10 transition-all hover:border-white/20">
-            <form action="/shorten" method="POST" class="flex flex-col md:flex-row gap-3">
-                <div class="flex-1 flex items-center bg-black/20 rounded-[30px] px-6">
-                    <i class="fas fa-link text-gray-400 text-xl"></i>
-                    <input type="url" name="long_url" placeholder="Paste your long link here..." required 
-                           class="w-full bg-transparent p-5 outline-none text-white text-lg md:text-xl font-bold placeholder-gray-500">
+        <div class="glass-panel p-6 md:p-8 rounded-[40px] w-full max-w-4xl relative z-10 transition-all hover:border-white/20">
+            <form action="/shorten" method="POST" class="flex flex-col gap-4">
+                <div class="flex flex-col md:flex-row gap-3">
+                    <div class="flex-1 flex items-center bg-black/20 rounded-[30px] px-6 py-2">
+                        <i class="fas fa-link text-gray-400 text-xl"></i>
+                        <input type="url" name="long_url" placeholder="Paste your long link here..." required 
+                               class="w-full bg-transparent p-4 outline-none text-white text-lg md:text-xl font-bold placeholder-gray-500">
+                    </div>
+                    <button type="submit" class="{c['bg']} text-white px-12 py-4 rounded-[30px] font-black text-xl md:text-2xl transition-all glow-btn uppercase tracking-wider" style="--theme-color: #38bdf8;">
+                        Shorten <i class="fas fa-arrow-right ml-2"></i>
+                    </button>
                 </div>
-                <button type="submit" class="{c['bg']} text-white px-12 py-5 rounded-[30px] font-black text-xl md:text-2xl transition-all glow-btn uppercase tracking-wider" style="--theme-color: #38bdf8;">
-                    Shorten <i class="fas fa-arrow-right ml-2"></i>
-                </button>
+                <!-- OPTIONAL CPA LOCKER CHECKBOX -->
+                <div class="flex items-center justify-center gap-3 mt-2">
+                    <input type="checkbox" name="is_locked" id="is_locked" class="w-6 h-6 cursor-pointer accent-sky-500 rounded-md">
+                    <label for="is_locked" class="text-gray-300 font-bold text-lg cursor-pointer select-none flex items-center gap-2">
+                        Enable Premium CPA Locker <i class="fas fa-lock text-yellow-500"></i>
+                    </label>
+                </div>
             </form>
         </div>
 
-        <!-- Features Section -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-16 max-w-5xl w-full">
             <div class="glass-panel p-6 rounded-3xl text-center">
                 <i class="fas fa-shield-alt text-4xl {c['text']} mb-4"></i>
@@ -183,14 +190,24 @@ def index():
     </html>
     ''')
 
-# --- শর্টেন সাকসেস পেজ (Premium UI) ---
+# --- শর্টেন সাকসেস পেজ ---
 @app.route('/shorten', methods=['POST'])
 def web_shorten():
     settings = get_settings()
     c = COLOR_MAP.get(settings.get('main_theme', 'sky'), COLOR_MAP['sky'])
     long_url = request.form.get('long_url')
+    # চেক করা হচ্ছে ইউজার চেকবক্সে টিক দিয়েছে কিনা
+    is_locked = True if request.form.get('is_locked') else False
     sc = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
-    urls_col.insert_one({"long_url": long_url, "short_code": sc, "clicks": 0, "created_at": datetime.now().strftime("%Y-%m-%d %H:%M")})
+    
+    urls_col.insert_one({
+        "long_url": long_url, 
+        "short_code": sc, 
+        "clicks": 0, 
+        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "is_locked": is_locked  # ডাটাবেসে সেভ করা হলো এটি লকড নাকি নরমাল
+    })
+    
     return render_template_string(f'''
     <!DOCTYPE html>
     <html lang="en">
@@ -209,7 +226,9 @@ def web_shorten():
             <div class="inline-block p-4 rounded-full bg-emerald-500/20 text-emerald-400 mb-6">
                 <i class="fas fa-check-circle text-5xl"></i>
             </div>
-            <h2 class="text-4xl md:text-5xl font-black mb-10 text-white uppercase italic">Link Created!</h2>
+            <h2 class="text-4xl md:text-5xl font-black mb-6 text-white uppercase italic">Link Created!</h2>
+            
+            {"<p class='text-yellow-400 font-bold mb-6 tracking-widest text-sm uppercase'><i class='fas fa-lock'></i> CPA Premium Lock Enabled</p>" if is_locked else ""}
             
             <div class="flex items-center bg-black/30 rounded-2xl p-2 mb-8 border border-white/10">
                 <input id="shortUrl" value="{request.host_url + sc}" readonly class="w-full bg-transparent p-4 outline-none {c['text']} font-black text-center text-xl md:text-2xl">
@@ -238,7 +257,7 @@ def web_shorten():
     </html>
     ''')
 
-# --- এডমিন প্যানেল (অপরিবর্তিত) ---
+# --- এডমিন প্যানেল ---
 @app.route('/admin')
 def admin_panel():
     if not is_logged_in(): return redirect(url_for('login'))
@@ -247,7 +266,6 @@ def admin_panel():
     channels = list(channels_col.find())
     ad_links = list(ad_links_col.find())
     
-    # স্ট্যাটস প্রোসেসিং (Dashboard Analytics)
     today = datetime.now().strftime("%Y-%m-%d")
     total_views = stats_col.count_documents({})
     today_views = stats_col.count_documents({"date": today})
@@ -266,27 +284,20 @@ def admin_panel():
     ::-webkit-scrollbar { height: 5px; } ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; } </style>
     </head><body class="bg-slate-50 flex flex-col lg:flex-row min-h-screen font-sans">
         
-        <!-- Sidebar Navigation (মেনুবার) -->
         <div class="w-full lg:w-72 bg-white border-b lg:border-r p-6 flex lg:flex-col overflow-x-auto lg:overflow-visible sticky top-0 z-50">
             <h2 class="hidden lg:block text-2xl font-black mb-10 text-blue-600 italic tracking-tighter">PREMIUM ADMIN</h2>
             <nav class="flex lg:flex-col gap-2 w-full">
-                <!-- ১. Dashboard: এখানে মোট ভিউ, আজকের ভিউ এবং চার্ট দেখা যায় -->
                 <button onclick="tab('dash')" id="btn-dash" class="flex-1 lg:w-full text-center lg:text-left p-4 rounded-xl font-bold active-btn">📊 Dashboard</button>
-                <!-- ২. Links: এখানে শর্ট করা লিংকের লিস্ট এবং ক্লিক সংখ্যা দেখা যায় -->
                 <button onclick="tab('links')" id="btn-links" class="flex-1 lg:w-full text-center lg:text-left p-4 rounded-xl font-bold text-slate-500">🔗 Links</button>
-                <!-- ৩. Ads: ডাইরেক্ট অ্যাড লিংক (যেমন Terra-Click) ম্যানেজ করার জায়গা -->
                 <button onclick="tab('ads')" id="btn-ads" class="flex-1 lg:w-full text-center lg:text-left p-4 rounded-xl font-bold text-slate-500">💰 Ads</button>
-                <!-- ৪. Partners: পার্টনার চ্যানেলের নাম, লোগো এবং লিংক যুক্ত করার জায়গা -->
                 <button onclick="tab('partners')" id="btn-partners" class="flex-1 lg:w-full text-center lg:text-left p-4 rounded-xl font-bold text-slate-500">📢 Partners</button>
-                <!-- ৫. Settings: সাইটের নাম, পাসওয়ার্ড, থিম, টাইম এবং অ্যাড কোড সেট করার জায়গা -->
                 <button onclick="tab('config')" id="btn-config" class="flex-1 lg:w-full text-center lg:text-left p-4 rounded-xl font-bold text-slate-500">⚙️ Settings</button>
-                <!-- ৬. Logout: এখান থেকে এডমিন প্যানেল থেকে বের হওয়া যায় -->
                 <a href="/logout" class="flex-1 lg:w-full text-center lg:text-left p-4 rounded-xl font-bold text-red-500 hover:bg-red-50 mt-4 lg:mt-10 border border-red-100 lg:border-none">🚪 Logout</a>
             </nav>
         </div>
 
         <div class="flex-1 p-6 lg:p-12 overflow-y-auto">
-            <!-- TAB: DASHBOARD (মূল পরিসংখ্যান) -->
+            <!-- TAB: DASHBOARD -->
             <div id="dash" class="tab-content active space-y-8">
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div class="bg-blue-600 p-8 rounded-[40px] text-white shadow-xl"><p class="text-xs font-bold opacity-70">TOTAL VIEWS</p><h3 class="text-5xl font-black">{{total_views}}</h3></div>
@@ -303,21 +314,23 @@ def admin_panel():
                         </div>
                     </div>
                 </div>
-                <!-- Direct Ad Link Performance: কোন অ্যাড লিংকে কতবার ক্লিক হয়েছে তার স্ট্যাটস -->
                 <div class="bg-white p-8 rounded-[40px] border shadow-sm"><h4 class="font-black mb-4 uppercase text-slate-400 text-sm">Direct Ad Link Performance</h4>
                     <div class="space-y-2">{% for as in ad_stats %}<div class="flex justify-between p-4 bg-slate-50 rounded-2xl text-sm"><span class="truncate pr-4">{{as.url}}</span><b class="text-emerald-600">{{as.count}} Clicks</b></div>{% endfor %}</div>
                 </div>
             </div>
 
-            <!-- TAB: LINKS (লিংক লিস্ট) -->
+            <!-- TAB: LINKS (CPA 🔒 Icon added) -->
             <div id="links" class="tab-content">
                 <div class="bg-white rounded-[40px] border shadow-sm overflow-x-auto">
                     <table class="w-full text-left text-sm"><thead class="bg-slate-50 font-bold uppercase text-slate-400"><tr><th class="p-6">Link</th><th class="p-6">Original URL</th><th class="p-6">Clicks</th></tr></thead>
-                    <tbody class="divide-y font-bold">{% for u in all_urls %}<tr><td class="p-6 text-blue-600">/{{u.short_code}}</td><td class="p-6 truncate max-w-xs text-slate-500">{{u.long_url}}</td><td class="p-6">{{u.clicks}}</td></tr>{% endfor %}</tbody></table>
+                    <tbody class="divide-y font-bold">{% for u in all_urls %}<tr>
+                        <td class="p-6 text-blue-600">/{{u.short_code}} {% if u.is_locked %}<span title="CPA Locked" class="ml-2">🔒</span>{% endif %}</td>
+                        <td class="p-6 truncate max-w-xs text-slate-500">{{u.long_url}}</td><td class="p-6">{{u.clicks}}</td>
+                    </tr>{% endfor %}</tbody></table>
                 </div>
             </div>
 
-            <!-- TAB: ADS (ডাইরেক্ট অ্যাড ম্যানেজমেন্ট) -->
+            <!-- TAB: ADS -->
             <div id="ads" class="tab-content space-y-8">
                 <div class="bg-white p-10 rounded-[50px] border shadow-sm">
                     <h4 class="font-black mb-6">Manage Direct Ad Links</h4>
@@ -329,7 +342,7 @@ def admin_panel():
                 </div>
             </div>
 
-            <!-- TAB: PARTNERS (পার্টনার চ্যানেল যোগ করা) -->
+            <!-- TAB: PARTNERS -->
             <div id="partners" class="tab-content">
                 <div class="bg-white p-10 rounded-[50px] border shadow-sm">
                     <h4 class="font-black mb-6">Official Channels</h4>
@@ -343,24 +356,18 @@ def admin_panel():
                 </div>
             </div>
 
-            <!-- TAB: SETTINGS (পুরো সাইটের কনফিগারেশন) -->
+            <!-- TAB: SETTINGS -->
             <div id="config" class="tab-content space-y-8">
                 <form action="/admin/update" method="POST" class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     <div class="bg-white p-10 rounded-[50px] shadow-sm border space-y-6">
                         <h4 class="font-black text-xl">General Settings</h4>
-                        <!-- সাইটের নাম পরিবর্তন -->
                         <input type="text" name="site_name" value="{{s.site_name}}" placeholder="Site Name" class="w-full p-4 bg-slate-50 rounded-2xl font-bold">
                         <div class="grid grid-cols-2 gap-4">
-                            <!-- স্টেপ সংখ্যা (কতবার নেক্সট বাটনে ক্লিক করতে হবে) -->
                             <input type="number" name="steps" value="{{s.steps}}" placeholder="Steps" class="p-4 bg-slate-50 rounded-2xl">
-                            <!-- টাইমার সেকেন্ড (বাটন আসার আগে কতক্ষণ অপেক্ষা করতে হবে) -->
                             <input type="number" name="timer_seconds" value="{{s.timer_seconds}}" placeholder="Seconds" class="p-4 bg-slate-50 rounded-2xl">
-                            <!-- হোম পেজের কালার সেট করা -->
                             <select name="main_theme" class="p-4 bg-slate-50 rounded-2xl">{% for k in colors %}<option value="{{k}}" {% if s.main_theme == k %}selected{% endif %}>HOME: {{k|upper}}</option>{% endfor %}</select>
-                            <!-- শর্ট লিংক পেজের কালার সেট করা -->
                             <select name="step_theme" class="p-4 bg-slate-50 rounded-2xl">{% for k in colors %}<option value="{{k}}" {% if s.step_theme == k %}selected{% endif %}>STEP: {{k|upper}}</option>{% endfor %}</select>
                         </div>
-                        <!-- API Key সেকশন -->
                         <div class="bg-orange-50 p-6 rounded-3xl space-y-4">
                             <p class="text-xs font-bold text-orange-600 uppercase">API Management</p>
                             <input type="text" id="apiKey" name="api_key" value="{{s.api_key}}" class="w-full p-4 bg-white rounded-xl text-xs font-mono border outline-none">
@@ -369,16 +376,17 @@ def admin_panel():
                                 <button type="button" onclick="genApi()" class="flex-1 bg-orange-600 text-white py-3 rounded-lg text-xs font-bold">REGENERATE</button>
                             </div>
                         </div>
-                        <!-- টেলিগ্রাম আইডি এবং পাসওয়ার্ড রিসেট -->
                         <input type="text" name="admin_telegram_id" value="{{s.admin_telegram_id}}" placeholder="Telegram Chat ID" class="w-full p-4 bg-slate-50 rounded-2xl font-bold">
                         <input type="password" name="new_password" placeholder="Change Admin Password" class="w-full p-4 bg-red-50 rounded-2xl font-bold">
                     </div>
                     
                     <div class="bg-white p-10 rounded-[50px] shadow-sm border space-y-4">
                         <h4 class="font-black text-xl text-emerald-600">Monetization Scripts</h4>
-                        <!-- Direct Click Limit: একবার কন্টিনিউ করতে কয়বার ডাইরেক্ট অ্যাড ওপেন হবে -->
                         <input type="number" name="direct_click_limit" value="{{s.direct_click_limit}}" class="w-full p-4 bg-blue-50 rounded-2xl font-bold" placeholder="Clicks per direct ad">
-                        <!-- বিভিন্ন প্রকার অ্যাড স্ক্রিপ্ট (Adsterra/PopCash etc) বসানোর জায়গা -->
+                        
+                        <!-- NEW CPA SCRIPT TEXTAREA -->
+                        <textarea name="cpa_script" placeholder="CPA Content Locker Script (e.g. CPAGrip)" class="w-full h-24 p-4 bg-yellow-50 border border-yellow-200 rounded-xl text-xs font-mono">{{s.get('cpa_script', '')}}</textarea>
+                        
                         <textarea name="popunder" placeholder="Popunder Script" class="w-full h-24 p-4 bg-slate-50 rounded-xl text-xs font-mono">{{s.popunder}}</textarea>
                         <textarea name="banner" placeholder="Banner Script" class="w-full h-24 p-4 bg-slate-50 rounded-xl text-xs font-mono">{{s.banner}}</textarea>
                         <textarea name="social_bar" placeholder="Social Bar Script" class="w-full h-24 p-4 bg-slate-50 rounded-xl text-xs font-mono">{{s.social_bar}}</textarea>
@@ -415,7 +423,7 @@ def admin_panel():
         devices=devices, ad_stats=ad_stats, ad_links=ad_links, channels=channels, s=settings, 
         colors=COLOR_MAP.keys(), chart_labels=chart_labels, chart_values=chart_values)
 
-# --- এডমিন অ্যাকশনস (অপরিবর্তিত) ---
+# --- এডমিন অ্যাকশনস ---
 @app.route('/admin/add_ad_link', methods=['POST'])
 def add_ad_link():
     if not is_logged_in(): return redirect(url_for('login'))
@@ -451,6 +459,7 @@ def update_settings():
         "steps": int(request.form.get('steps', 2)),
         "timer_seconds": int(request.form.get('timer_seconds', 10)),
         "api_key": request.form.get('api_key').strip(),
+        "cpa_script": request.form.get('cpa_script'), # NEW CPA SCRIPT
         "popunder": request.form.get('popunder'),
         "banner": request.form.get('banner'),
         "social_bar": request.form.get('social_bar'),
@@ -464,15 +473,55 @@ def update_settings():
     settings_col.update_one({}, {"$set": d})
     return redirect(url_for('admin_panel'))
 
-# --- রিডাইরেক্ট লজিক (Auto Scroll & Premium Ad Visibility) ---
+# --- রিডাইরেক্ট লজিক (CPA + Standard Auto Scroll) ---
 @app.route('/<short_code>')
 def handle_ad_steps(short_code):
-    step = int(request.args.get('step', 1))
     settings = get_settings()
     url_data = urls_col.find_one({"short_code": short_code})
     if not url_data: return "404 Not Found", 404
     
-    # সব স্টেপ শেষ হলে মেইন লিংকে পাঠাবে
+    # -----------------------------------------------------
+    # OPTION 1: CPA LOCKER LOGIC (যদি লিংকে টিক দেওয়া থাকে)
+    # -----------------------------------------------------
+    if url_data.get('is_locked'):
+        urls_col.update_one({"short_code": short_code}, {"$inc": {"clicks": 1}})
+        track_click(short_code)
+        
+        return render_template_string('''
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <script src="https://cdn.tailwindcss.com"></script>
+            <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+            <!-- CPA SCRIPT INJECTED HERE -->
+            {{ s.get('cpa_script', '')|safe }}
+            <title>Content Locked</title>
+        </head>
+        <body class="bg-slate-900 min-h-screen flex items-center justify-center p-4">
+            <div class="bg-slate-800 p-10 md:p-16 rounded-[40px] shadow-2xl text-center max-w-lg w-full border border-slate-700">
+                <div class="w-24 h-24 bg-yellow-500/20 text-yellow-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <i class="fas fa-lock text-5xl"></i>
+                </div>
+                <h2 class="text-3xl font-black text-white mb-4 uppercase tracking-wider">Premium Content</h2>
+                <p class="text-slate-400 font-medium mb-8">This file/link is securely locked. Please complete a quick human verification offer to unlock it automatically.</p>
+                
+                <!-- এই বাটনে ক্লিক করলে CPA পপ-আপ আসবে (CPAGrip এর ডিফল্ট ক্লাস onClick কাজ করে) -->
+                <button onclick="window.location.href='{{url_data['long_url']}}'" class="w-full bg-yellow-500 hover:bg-yellow-600 text-slate-900 py-5 rounded-2xl font-black text-xl uppercase tracking-widest transition-all">
+                    Unlock & Continue <i class="fas fa-unlock ml-2"></i>
+                </button>
+                <p class="text-xs text-slate-500 mt-6"><i class="fas fa-shield-alt mr-1"></i> 100% Safe & Secure Encryption</p>
+            </div>
+        </body>
+        </html>
+        ''', s=settings, url_data=url_data)
+
+    # -----------------------------------------------------
+    # OPTION 2: STANDARD LOGIC (আগের মতো টাইমার ও অটো স্ক্রল)
+    # -----------------------------------------------------
+    step = int(request.args.get('step', 1))
+    
     if step > settings['steps']:
         urls_col.update_one({"short_code": short_code}, {"$inc": {"clicks": 1}})
         track_click(short_code)
@@ -480,6 +529,7 @@ def handle_ad_steps(short_code):
     
     ads = [l['url'] for l in ad_links_col.find()]
     tc = COLOR_MAP.get(settings.get('step_theme', 'blue'), COLOR_MAP['blue'])
+    
     return render_template_string('''
     <!DOCTYPE html>
     <html lang="en">
@@ -492,12 +542,11 @@ def handle_ad_steps(short_code):
         <style>
             .pulse-bg { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
             @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
-            html { scroll-behavior: smooth; } /* Smooth scrolling effect */
+            html { scroll-behavior: smooth; }
         </style>
     </head>
     <body class="bg-gray-100 min-h-screen font-sans text-gray-800 pb-10">
         
-        <!-- Header -->
         <header class="bg-white shadow-sm p-4 text-center border-b-4 {{tc.border}} sticky top-0 z-50">
             <h1 class="text-xl md:text-2xl font-black text-gray-800 tracking-tighter uppercase">
                 <i class="fas fa-shield-check {{tc.text}} mr-2"></i> Safe Link Portal
@@ -506,7 +555,6 @@ def handle_ad_steps(short_code):
 
         <div class="max-w-4xl mx-auto flex flex-col items-center p-4 mt-6">
             
-            <!-- Top Box: Progress & Timer -->
             <div class="bg-white p-8 md:p-12 rounded-3xl shadow-xl text-center w-full relative overflow-hidden border border-gray-200 mb-8">
                 <div class="absolute top-0 left-0 w-full h-2 bg-gray-100">
                     <div class="h-full {{tc.bg}}" style="width: {{ (step / total_steps) * 100 }}%"></div>
@@ -516,7 +564,7 @@ def handle_ad_steps(short_code):
                     Step {{step}} / {{total_steps}}
                 </div>
                 
-                <h2 id="status_text" class="text-2xl md:text-4xl font-black text-gray-800 mb-6">Verifying your connection...</h2>
+                <h2 id="status_text" class="text-2xl md:text-4xl font-black text-gray-800 mb-6">Checking IP Address...</h2>
 
                 <div id="progress_container" class="w-full max-w-md mx-auto">
                     <div class="flex justify-between text-sm font-bold text-gray-500 mb-2">
@@ -537,19 +585,16 @@ def handle_ad_steps(short_code):
                 </div>
             </div>
 
-            <!-- Middle Ad Section 1 (Banner) -->
             <div class="w-full bg-white p-2 shadow-md rounded-xl mb-8 text-center min-h-[100px] flex flex-col items-center justify-center border-l-4 border-gray-300">
                 <span class="text-xs text-gray-400 mb-2 tracking-widest uppercase">Advertisement</span>
                 <div class="w-full overflow-hidden flex justify-center">{{ s.banner|safe }}</div>
             </div>
 
-            <!-- Middle Ad Section 2 (Native) -->
             <div class="w-full bg-white p-4 shadow-md rounded-xl mb-8 border-l-4 border-gray-300">
                 <span class="text-xs text-gray-400 block text-center mb-2 tracking-widest uppercase">Sponsored Content</span>
                 <div class="w-full overflow-hidden flex justify-center">{{ s.native|safe }}</div>
             </div>
 
-            <!-- Bottom Action Box (Where auto-scroll goes) -->
             <div id="final_action_section" class="w-full bg-white p-8 md:p-12 rounded-3xl shadow-2xl text-center border-t-8 {{tc.border}} mt-4 mb-8 transform transition-all">
                 <h3 class="text-xl md:text-2xl font-black text-gray-700 mb-6">Your Link is Almost Ready</h3>
                 
@@ -560,7 +605,6 @@ def handle_ad_steps(short_code):
                 <p id="wait_msg" class="text-gray-400 font-bold text-sm mt-4">Please complete the progress above...</p>
             </div>
 
-            <!-- Partners Area -->
             <div class="w-full bg-slate-900 rounded-[40px] shadow-2xl overflow-hidden p-4">
                 {{ partners_html|safe }}
             </div>
@@ -587,6 +631,10 @@ def handle_ad_steps(short_code):
                 let percent = ((totalSec - sec) / totalSec) * 100;
                 progressBar.style.width = percent + "%";
 
+                if (sec === Math.floor(totalSec / 2)) {
+                    statusText.innerText = "Scanning for malware...";
+                }
+
                 if(sec <= 0) { 
                     clearInterval(iv); 
                     statusText.innerText = "Verification Complete!";
@@ -599,7 +647,6 @@ def handle_ad_steps(short_code):
                     mainBtn.removeAttribute('disabled');
                     updateBtn(); 
 
-                    // ** AUTO SCROLL MAGIC ** (টাইমার শেষ হলে অটো নিচে নিয়ে যাবে)
                     setTimeout(() => {
                         finalSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         finalSection.classList.add('scale-105');
@@ -628,7 +675,6 @@ def handle_ad_steps(short_code):
                     mainBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Checking Ad...';
                     mainBtn.setAttribute('disabled', 'true');
                     
-                    // User must wait 3 seconds after clicking ad
                     setTimeout(() => {
                         mainBtn.removeAttribute('disabled');
                         updateBtn();
@@ -649,7 +695,7 @@ def track_ajax():
     track_click(request.args.get('sc'), request.args.get('ad'))
     return "ok"
 
-# --- লগইন ও পাসওয়ার্ড রিকভারি (অপরিবর্তিত) ---
+# --- লগইন ও পাসওয়ার্ড রিকভারি ---
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if is_logged_in(): return redirect(url_for('admin_panel'))
