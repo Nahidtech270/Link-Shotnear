@@ -464,7 +464,7 @@ def update_settings():
     settings_col.update_one({}, {"$set": d})
     return redirect(url_for('admin_panel'))
 
-# --- রিডাইরেক্ট লজিক (Premium Step Page Update) ---
+# --- রিডাইরেক্ট লজিক (Auto Scroll & Premium Ad Visibility) ---
 @app.route('/<short_code>')
 def handle_ad_steps(short_code):
     step = int(request.args.get('step', 1))
@@ -492,30 +492,22 @@ def handle_ad_steps(short_code):
         <style>
             .pulse-bg { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
             @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
-            .glass { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(24px); border: 1px solid rgba(255, 255, 255, 0.1); }
+            html { scroll-behavior: smooth; } /* Smooth scrolling effect */
         </style>
     </head>
-    <body class="bg-gray-100 min-h-screen font-sans text-gray-800">
+    <body class="bg-gray-100 min-h-screen font-sans text-gray-800 pb-10">
         
         <!-- Header -->
-        <header class="bg-white shadow-sm p-4 text-center border-b-4 {{tc.border}}">
-            <h1 class="text-2xl font-black text-gray-800 tracking-tighter uppercase">
+        <header class="bg-white shadow-sm p-4 text-center border-b-4 {{tc.border}} sticky top-0 z-50">
+            <h1 class="text-xl md:text-2xl font-black text-gray-800 tracking-tighter uppercase">
                 <i class="fas fa-shield-check {{tc.text}} mr-2"></i> Safe Link Portal
             </h1>
         </header>
 
         <div class="max-w-4xl mx-auto flex flex-col items-center p-4 mt-6">
             
-            <!-- Banner Ad Top -->
-            <div class="w-full bg-white p-2 shadow-md rounded-xl mb-6 text-center min-h-[90px] flex items-center justify-center">
-                <span class="text-xs text-gray-400">Advertisement</span>
-                {{ s.banner|safe }}
-            </div>
-
-            <!-- Main Action Box -->
-            <div class="bg-white p-8 md:p-12 rounded-3xl shadow-xl text-center w-full relative overflow-hidden border border-gray-200">
-                
-                <!-- Step Indicator -->
+            <!-- Top Box: Progress & Timer -->
+            <div class="bg-white p-8 md:p-12 rounded-3xl shadow-xl text-center w-full relative overflow-hidden border border-gray-200 mb-8">
                 <div class="absolute top-0 left-0 w-full h-2 bg-gray-100">
                     <div class="h-full {{tc.bg}}" style="width: {{ (step / total_steps) * 100 }}%"></div>
                 </div>
@@ -524,13 +516,12 @@ def handle_ad_steps(short_code):
                     Step {{step}} / {{total_steps}}
                 </div>
                 
-                <h2 id="status_text" class="text-3xl md:text-4xl font-black text-gray-800 mb-6">Verifying your connection...</h2>
+                <h2 id="status_text" class="text-2xl md:text-4xl font-black text-gray-800 mb-6">Verifying your connection...</h2>
 
-                <!-- Progress Bar / Timer -->
-                <div id="progress_container" class="w-full max-w-md mx-auto mb-8">
+                <div id="progress_container" class="w-full max-w-md mx-auto">
                     <div class="flex justify-between text-sm font-bold text-gray-500 mb-2">
                         <span>Please wait</span>
-                        <span id="timer_text" class="{{tc.text}}">{{timer}} seconds</span>
+                        <span id="timer_text" class="{{tc.text}} text-lg">{{timer}} seconds</span>
                     </div>
                     <div class="w-full bg-gray-200 rounded-full h-4 shadow-inner overflow-hidden">
                         <div id="progress_bar" class="{{tc.bg}} h-4 rounded-full transition-all duration-1000 ease-linear relative" style="width: 0%">
@@ -539,25 +530,38 @@ def handle_ad_steps(short_code):
                     </div>
                 </div>
 
-                <!-- Action Button -->
+                <div id="scroll_msg" class="hidden mt-6 bg-emerald-50 text-emerald-600 p-4 rounded-xl border border-emerald-200">
+                    <p class="text-lg font-black animate-bounce">
+                        <i class="fas fa-arrow-down mr-2"></i> Scroll Down To Continue
+                    </p>
+                </div>
+            </div>
+
+            <!-- Middle Ad Section 1 (Banner) -->
+            <div class="w-full bg-white p-2 shadow-md rounded-xl mb-8 text-center min-h-[100px] flex flex-col items-center justify-center border-l-4 border-gray-300">
+                <span class="text-xs text-gray-400 mb-2 tracking-widest uppercase">Advertisement</span>
+                <div class="w-full overflow-hidden flex justify-center">{{ s.banner|safe }}</div>
+            </div>
+
+            <!-- Middle Ad Section 2 (Native) -->
+            <div class="w-full bg-white p-4 shadow-md rounded-xl mb-8 border-l-4 border-gray-300">
+                <span class="text-xs text-gray-400 block text-center mb-2 tracking-widest uppercase">Sponsored Content</span>
+                <div class="w-full overflow-hidden flex justify-center">{{ s.native|safe }}</div>
+            </div>
+
+            <!-- Bottom Action Box (Where auto-scroll goes) -->
+            <div id="final_action_section" class="w-full bg-white p-8 md:p-12 rounded-3xl shadow-2xl text-center border-t-8 {{tc.border}} mt-4 mb-8 transform transition-all">
+                <h3 class="text-xl md:text-2xl font-black text-gray-700 mb-6">Your Link is Almost Ready</h3>
+                
                 <button id="main_btn" onclick="handleClick()" disabled 
-                        class="hidden w-full max-w-md mx-auto {{tc.bg}} text-white py-5 rounded-2xl font-black text-2xl uppercase tracking-wider shadow-[0_10px_20px_-10px_rgba(0,0,0,0.5)] transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed">
+                        class="hidden w-full max-w-md mx-auto {{tc.bg}} text-white py-6 rounded-2xl font-black text-2xl md:text-3xl uppercase tracking-wider shadow-[0_10px_20px_-10px_rgba(0,0,0,0.5)] transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed">
                     <i class="fas fa-check-circle mr-2"></i> Continue
                 </button>
-
-                <p id="scroll_msg" class="hidden mt-4 text-sm font-bold text-gray-400 animate-bounce">
-                    <i class="fas fa-arrow-down mr-1"></i> Scroll down and click continue
-                </p>
+                <p id="wait_msg" class="text-gray-400 font-bold text-sm mt-4">Please complete the progress above...</p>
             </div>
 
-            <!-- Native Ad Space -->
-            <div class="w-full bg-white p-4 shadow-md rounded-xl mt-6">
-                <span class="text-xs text-gray-400 block text-center mb-2">Sponsored Content</span>
-                {{ s.native|safe }}
-            </div>
-
-            <!-- Partners HTML -->
-            <div class="w-full mt-8 bg-slate-900 rounded-[40px] shadow-2xl overflow-hidden p-2">
+            <!-- Partners Area -->
+            <div class="w-full bg-slate-900 rounded-[40px] shadow-2xl overflow-hidden p-4">
                 {{ partners_html|safe }}
             </div>
         </div>
@@ -574,6 +578,8 @@ def handle_ad_steps(short_code):
             const mainBtn = document.getElementById('main_btn');
             const statusText = document.getElementById('status_text');
             const scrollMsg = document.getElementById('scroll_msg');
+            const waitMsg = document.getElementById('wait_msg');
+            const finalSection = document.getElementById('final_action_section');
 
             const iv = setInterval(() => { 
                 sec--; 
@@ -583,14 +589,22 @@ def handle_ad_steps(short_code):
 
                 if(sec <= 0) { 
                     clearInterval(iv); 
-                    timerText.innerText = "Ready!";
-                    statusText.innerText = "Verification Complete";
+                    statusText.innerText = "Verification Complete!";
+                    statusText.classList.add('text-emerald-600');
                     document.getElementById('progress_container').classList.add('hidden');
+                    scrollMsg.classList.remove('hidden');
                     
+                    waitMsg.classList.add('hidden');
                     mainBtn.classList.remove('hidden'); 
                     mainBtn.removeAttribute('disabled');
-                    scrollMsg.classList.remove('hidden');
                     updateBtn(); 
+
+                    // ** AUTO SCROLL MAGIC ** (টাইমার শেষ হলে অটো নিচে নিয়ে যাবে)
+                    setTimeout(() => {
+                        finalSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        finalSection.classList.add('scale-105');
+                        setTimeout(() => finalSection.classList.remove('scale-105'), 500);
+                    }, 500);
                 } 
             }, 1000);
 
@@ -599,7 +613,7 @@ def handle_ad_steps(short_code):
                     mainBtn.innerHTML = `<i class="fas fa-external-link-alt mr-2"></i> VERIFY AD (${clicks+1}/${limit})`;
                     mainBtn.classList.add('animate-pulse');
                 } else { 
-                    mainBtn.innerHTML = `<i class="fas fa-arrow-right mr-2"></i> GET LINK`; 
+                    mainBtn.innerHTML = `<i class="fas fa-arrow-right mr-2"></i> NEXT STEP`; 
                     mainBtn.classList.remove('animate-pulse');
                 }
             }
@@ -611,10 +625,10 @@ def handle_ad_steps(short_code):
                     window.open(r, '_blank'); 
                     clicks++; 
                     
-                    mainBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Checking...';
+                    mainBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Checking Ad...';
                     mainBtn.setAttribute('disabled', 'true');
                     
-                    // User must wait 3 seconds after clicking the ad to proceed
+                    // User must wait 3 seconds after clicking ad
                     setTimeout(() => {
                         mainBtn.removeAttribute('disabled');
                         updateBtn();
