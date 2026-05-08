@@ -112,13 +112,78 @@ def api_system():
     urls_col.insert_one({"long_url": long_url, "short_code": sc, "clicks": 0, "created_at": datetime.now().strftime("%Y-%m-%d %H:%M")})
     return request.host_url + sc if res_format == 'text' else jsonify({"status": "success", "shortenedUrl": request.host_url + sc})
 
-# --- হোম পেজ (যেখানে ইউজার লিঙ্ক শর্ট করবে) ---
+# --- হোম পেজ (Premium UI) ---
 @app.route('/')
 def index():
     settings = get_settings()
     c = COLOR_MAP.get(settings.get('main_theme', 'sky'), COLOR_MAP['sky'])
-    return render_template_string(f'''<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://cdn.tailwindcss.com"></script><title>{settings['site_name']}</title><style>body {{ background: #0f172a; color: white; }} .glass {{ background: rgba(255,255,255,0.03); backdrop-filter: blur(20px); border: 1px solid rgba(255,255,255,0.1); }}</style></head><body class="min-h-screen flex flex-col items-center justify-center p-6 text-center"><h1 class="text-5xl md:text-9xl font-black mb-6 {c['text']} italic uppercase">{settings['site_name']}</h1><p class="text-gray-200 mb-14 text-xl md:text-4xl font-black uppercase tracking-widest">Premium Shortener System</p><div class="glass p-5 rounded-[50px] w-full max-w-4xl shadow-3xl"><form action="/shorten" method="POST" class="flex flex-col md:flex-row gap-4"><input type="url" name="long_url" placeholder="PASTE LINK HERE..." required class="flex-1 bg-transparent p-6 outline-none text-white text-2xl font-black"><button type="submit" class="{c['bg']} text-white px-14 py-6 rounded-[40px] font-black text-3xl hover:scale-105 transition uppercase">Shorten</button></form></div>{get_channels_html(settings.get('main_theme', 'sky'))}</body></html>''')
+    return render_template_string(f'''
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+        <title>{settings['site_name']} - Premium URL Shortener</title>
+        <style>
+            body {{ background: #0f172a; color: white; background-image: radial-gradient(circle at top right, #1e293b, #0f172a); }}
+            .glass, .glass-panel {{ background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(24px); border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }}
+            .glow-btn:hover {{ box-shadow: 0 0 25px var(--theme-color); transform: translateY(-2px); }}
+        </style>
+    </head>
+    <body class="min-h-screen flex flex-col items-center justify-center p-4 text-center">
+        
+        <!-- Hero Section -->
+        <div class="max-w-5xl mx-auto w-full mb-12 mt-10">
+            <div class="inline-block px-4 py-2 rounded-full glass-panel text-sm font-bold {c['text']} mb-6 tracking-widest uppercase">
+                <i class="fas fa-rocket mr-2"></i> Fast & Secure Link Shortening
+            </div>
+            <h1 class="text-5xl md:text-8xl font-black mb-4 text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400 italic uppercase">
+                {settings['site_name']}
+            </h1>
+            <p class="text-gray-400 text-lg md:text-2xl font-medium tracking-wide">Monetize your traffic with the highest paying shortener.</p>
+        </div>
 
+        <!-- Shortener Box -->
+        <div class="glass-panel p-3 md:p-4 rounded-[40px] w-full max-w-4xl relative z-10 transition-all hover:border-white/20">
+            <form action="/shorten" method="POST" class="flex flex-col md:flex-row gap-3">
+                <div class="flex-1 flex items-center bg-black/20 rounded-[30px] px-6">
+                    <i class="fas fa-link text-gray-400 text-xl"></i>
+                    <input type="url" name="long_url" placeholder="Paste your long link here..." required 
+                           class="w-full bg-transparent p-5 outline-none text-white text-lg md:text-xl font-bold placeholder-gray-500">
+                </div>
+                <button type="submit" class="{c['bg']} text-white px-12 py-5 rounded-[30px] font-black text-xl md:text-2xl transition-all glow-btn uppercase tracking-wider" style="--theme-color: #38bdf8;">
+                    Shorten <i class="fas fa-arrow-right ml-2"></i>
+                </button>
+            </form>
+        </div>
+
+        <!-- Features Section -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-16 max-w-5xl w-full">
+            <div class="glass-panel p-6 rounded-3xl text-center">
+                <i class="fas fa-shield-alt text-4xl {c['text']} mb-4"></i>
+                <h3 class="text-xl font-bold mb-2">Safe & Secure</h3>
+                <p class="text-gray-400 text-sm">Advanced anti-bot protection ensures your links are safe.</p>
+            </div>
+            <div class="glass-panel p-6 rounded-3xl text-center">
+                <i class="fas fa-chart-line text-4xl {c['text']} mb-4"></i>
+                <h3 class="text-xl font-bold mb-2">Real-time Stats</h3>
+                <p class="text-gray-400 text-sm">Track your audience with our detailed analytics system.</p>
+            </div>
+            <div class="glass-panel p-6 rounded-3xl text-center">
+                <i class="fas fa-coins text-4xl {c['text']} mb-4"></i>
+                <h3 class="text-xl font-bold mb-2">Highest Rates</h3>
+                <p class="text-gray-400 text-sm">Earn more money with our premium direct ad network.</p>
+            </div>
+        </div>
+
+        <div class="mt-12 w-full">{get_channels_html(settings.get('main_theme', 'sky'))}</div>
+    </body>
+    </html>
+    ''')
+
+# --- শর্টেন সাকসেস পেজ (Premium UI) ---
 @app.route('/shorten', methods=['POST'])
 def web_shorten():
     settings = get_settings()
@@ -126,9 +191,54 @@ def web_shorten():
     long_url = request.form.get('long_url')
     sc = ''.join(random.choices(string.ascii_letters + string.digits, k=6))
     urls_col.insert_one({"long_url": long_url, "short_code": sc, "clicks": 0, "created_at": datetime.now().strftime("%Y-%m-%d %H:%M")})
-    return render_template_string(f'''<html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://cdn.tailwindcss.com"></script></head><body class="bg-slate-900 flex flex-col items-center justify-center min-h-screen p-4 text-white"><div class="bg-slate-800 p-16 rounded-[60px] shadow-2xl text-center max-w-2xl w-full border border-slate-700"><h2 class="text-5xl font-black mb-10 {c['text']} uppercase italic">Link Created!</h2><input id="shortUrl" value="{request.host_url + sc}" readonly class="w-full bg-slate-900 p-8 rounded-3xl border border-slate-700 {c['text']} font-black text-center mb-10 text-3xl"><button onclick="copyLink()" id="copyBtn" class="w-full {c['bg']} text-white py-8 rounded-[40px] font-black text-4xl uppercase tracking-tighter shadow-2xl">COPY LINK</button><a href="/" class="block mt-10 text-slate-500 font-bold uppercase text-sm">Shorten Another</a></div><script>function copyLink() {{ var copyText = document.getElementById("shortUrl"); copyText.select(); navigator.clipboard.writeText(copyText.value); document.getElementById("copyBtn").innerText = "COPIED!"; }}</script></body></html>''')
+    return render_template_string(f'''
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+        <style>
+            body {{ background: #0f172a; color: white; background-image: radial-gradient(circle at top right, #1e293b, #0f172a); }}
+            .glass-panel {{ background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(24px); border: 1px solid rgba(255, 255, 255, 0.1); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); }}
+        </style>
+    </head>
+    <body class="min-h-screen flex flex-col items-center justify-center p-4 text-center">
+        <div class="glass-panel p-12 md:p-16 rounded-[50px] w-full max-w-2xl relative z-10">
+            <div class="inline-block p-4 rounded-full bg-emerald-500/20 text-emerald-400 mb-6">
+                <i class="fas fa-check-circle text-5xl"></i>
+            </div>
+            <h2 class="text-4xl md:text-5xl font-black mb-10 text-white uppercase italic">Link Created!</h2>
+            
+            <div class="flex items-center bg-black/30 rounded-2xl p-2 mb-8 border border-white/10">
+                <input id="shortUrl" value="{request.host_url + sc}" readonly class="w-full bg-transparent p-4 outline-none {c['text']} font-black text-center text-xl md:text-2xl">
+            </div>
+            
+            <button onclick="copyLink()" id="copyBtn" class="w-full {c['bg']} text-white py-6 rounded-[30px] font-black text-2xl uppercase tracking-wider shadow-lg hover:scale-105 transition-all">
+                <i class="fas fa-copy mr-2"></i> COPY LINK
+            </button>
+            
+            <a href="/" class="inline-block mt-8 text-gray-400 hover:text-white font-bold uppercase text-sm tracking-widest transition-colors">
+                <i class="fas fa-redo-alt mr-2"></i> Shorten Another Link
+            </a>
+        </div>
+        <script>
+            function copyLink() {{ 
+                var copyText = document.getElementById("shortUrl"); 
+                copyText.select(); 
+                navigator.clipboard.writeText(copyText.value); 
+                var btn = document.getElementById("copyBtn");
+                btn.innerHTML = '<i class="fas fa-check-double mr-2"></i> COPIED!';
+                btn.classList.add('bg-emerald-600');
+                setTimeout(() => {{ btn.innerHTML = '<i class="fas fa-copy mr-2"></i> COPY LINK'; btn.classList.remove('bg-emerald-600'); }}, 3000);
+            }}
+        </script>
+    </body>
+    </html>
+    ''')
 
-# --- এডমিন প্যানেল ---
+# --- এডমিন প্যানেল (অপরিবর্তিত) ---
 @app.route('/admin')
 def admin_panel():
     if not is_logged_in(): return redirect(url_for('login'))
@@ -305,7 +415,7 @@ def admin_panel():
         devices=devices, ad_stats=ad_stats, ad_links=ad_links, channels=channels, s=settings, 
         colors=COLOR_MAP.keys(), chart_labels=chart_labels, chart_values=chart_values)
 
-# --- এডমিন অ্যাকশনস (ডাটা সেভ করার রুটসমূহ) ---
+# --- এডমিন অ্যাকশনস (অপরিবর্তিত) ---
 @app.route('/admin/add_ad_link', methods=['POST'])
 def add_ad_link():
     if not is_logged_in(): return redirect(url_for('login'))
@@ -354,7 +464,7 @@ def update_settings():
     settings_col.update_one({}, {"$set": d})
     return redirect(url_for('admin_panel'))
 
-# --- রিডাইরেক্ট লজিক (শর্ট লিংকে ক্লিক করলে কী হবে) ---
+# --- রিডাইরেক্ট লজিক (Premium Step Page Update) ---
 @app.route('/<short_code>')
 def handle_ad_steps(short_code):
     step = int(request.args.get('step', 1))
@@ -371,28 +481,153 @@ def handle_ad_steps(short_code):
     ads = [l['url'] for l in ad_links_col.find()]
     tc = COLOR_MAP.get(settings.get('step_theme', 'blue'), COLOR_MAP['blue'])
     return render_template_string('''
-    <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0"><script src="https://cdn.tailwindcss.com"></script>
-    {{ s.popunder|safe }} {{ s.social_bar|safe }}</head><body class="bg-slate-50 flex flex-col items-center p-6 min-h-screen">
-        <div class="mb-6">{{ s.banner|safe }}</div>
-        <div class="bg-white p-12 md:p-20 rounded-[50px] md:rounded-[70px] shadow-2xl text-center max-w-2xl w-full border-t-[16px] {{tc.border}}">
-            <p class="text-xl md:text-2xl font-black {{tc.text}} uppercase tracking-widest mb-4">Step {{step}} of {{total_steps}}</p>
-            <div id="timer_box" class="text-7xl md:text-8xl font-black {{tc.text}} mb-8 {{tc.light_bg}} w-40 h-40 md:w-48 md:h-48 flex items-center justify-center rounded-full mx-auto border-8 shadow-inner">{{timer}}</div>
-            <button id="main_btn" onclick="handleClick()" class="hidden w-full {{tc.bg}} text-white py-8 rounded-[40px] font-black text-3xl uppercase">Continue</button>
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <script src="https://cdn.tailwindcss.com"></script>
+        <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+        {{ s.popunder|safe }} {{ s.social_bar|safe }}
+        <style>
+            .pulse-bg { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+            @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+            .glass { background: rgba(255, 255, 255, 0.05); backdrop-filter: blur(24px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        </style>
+    </head>
+    <body class="bg-gray-100 min-h-screen font-sans text-gray-800">
+        
+        <!-- Header -->
+        <header class="bg-white shadow-sm p-4 text-center border-b-4 {{tc.border}}">
+            <h1 class="text-2xl font-black text-gray-800 tracking-tighter uppercase">
+                <i class="fas fa-shield-check {{tc.text}} mr-2"></i> Safe Link Portal
+            </h1>
+        </header>
+
+        <div class="max-w-4xl mx-auto flex flex-col items-center p-4 mt-6">
+            
+            <!-- Banner Ad Top -->
+            <div class="w-full bg-white p-2 shadow-md rounded-xl mb-6 text-center min-h-[90px] flex items-center justify-center">
+                <span class="text-xs text-gray-400">Advertisement</span>
+                {{ s.banner|safe }}
+            </div>
+
+            <!-- Main Action Box -->
+            <div class="bg-white p-8 md:p-12 rounded-3xl shadow-xl text-center w-full relative overflow-hidden border border-gray-200">
+                
+                <!-- Step Indicator -->
+                <div class="absolute top-0 left-0 w-full h-2 bg-gray-100">
+                    <div class="h-full {{tc.bg}}" style="width: {{ (step / total_steps) * 100 }}%"></div>
+                </div>
+
+                <div class="mb-2 inline-block px-4 py-1 bg-gray-100 rounded-full text-sm font-bold text-gray-500 uppercase tracking-widest">
+                    Step {{step}} / {{total_steps}}
+                </div>
+                
+                <h2 id="status_text" class="text-3xl md:text-4xl font-black text-gray-800 mb-6">Verifying your connection...</h2>
+
+                <!-- Progress Bar / Timer -->
+                <div id="progress_container" class="w-full max-w-md mx-auto mb-8">
+                    <div class="flex justify-between text-sm font-bold text-gray-500 mb-2">
+                        <span>Please wait</span>
+                        <span id="timer_text" class="{{tc.text}}">{{timer}} seconds</span>
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-4 shadow-inner overflow-hidden">
+                        <div id="progress_bar" class="{{tc.bg}} h-4 rounded-full transition-all duration-1000 ease-linear relative" style="width: 0%">
+                            <div class="absolute top-0 left-0 w-full h-full bg-white opacity-20 pulse-bg"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Button -->
+                <button id="main_btn" onclick="handleClick()" disabled 
+                        class="hidden w-full max-w-md mx-auto {{tc.bg}} text-white py-5 rounded-2xl font-black text-2xl uppercase tracking-wider shadow-[0_10px_20px_-10px_rgba(0,0,0,0.5)] transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed">
+                    <i class="fas fa-check-circle mr-2"></i> Continue
+                </button>
+
+                <p id="scroll_msg" class="hidden mt-4 text-sm font-bold text-gray-400 animate-bounce">
+                    <i class="fas fa-arrow-down mr-1"></i> Scroll down and click continue
+                </p>
+            </div>
+
+            <!-- Native Ad Space -->
+            <div class="w-full bg-white p-4 shadow-md rounded-xl mt-6">
+                <span class="text-xs text-gray-400 block text-center mb-2">Sponsored Content</span>
+                {{ s.native|safe }}
+            </div>
+
+            <!-- Partners HTML -->
+            <div class="w-full mt-8 bg-slate-900 rounded-[40px] shadow-2xl overflow-hidden p-2">
+                {{ partners_html|safe }}
+            </div>
         </div>
-        <div class="mt-4">{{ s.native|safe }}</div>{{ partners_html|safe }}
+
         <script>
-            let sec = {{timer}}, ads = {{ads|tojson}}, clicks = 0, limit = {{limit}};
-            const timerBox = document.getElementById('timer_box'), mainBtn = document.getElementById('main_btn');
-            const iv = setInterval(() => { sec--; timerBox.innerText = sec; if(sec<=0) { clearInterval(iv); timerBox.style.display='none'; mainBtn.classList.remove('hidden'); updateBtn(); } }, 1000);
-            function updateBtn() { mainBtn.innerText = (clicks < limit && ads.length > 0) ? "VERIFY ("+(clicks+1)+"/"+limit+")" : "CONTINUE"; }
+            let sec = {{timer}};
+            const totalSec = sec;
+            let ads = {{ads|tojson}};
+            let clicks = 0;
+            let limit = {{limit}};
+            
+            const timerText = document.getElementById('timer_text');
+            const progressBar = document.getElementById('progress_bar');
+            const mainBtn = document.getElementById('main_btn');
+            const statusText = document.getElementById('status_text');
+            const scrollMsg = document.getElementById('scroll_msg');
+
+            const iv = setInterval(() => { 
+                sec--; 
+                timerText.innerText = sec + " seconds"; 
+                let percent = ((totalSec - sec) / totalSec) * 100;
+                progressBar.style.width = percent + "%";
+
+                if(sec <= 0) { 
+                    clearInterval(iv); 
+                    timerText.innerText = "Ready!";
+                    statusText.innerText = "Verification Complete";
+                    document.getElementById('progress_container').classList.add('hidden');
+                    
+                    mainBtn.classList.remove('hidden'); 
+                    mainBtn.removeAttribute('disabled');
+                    scrollMsg.classList.remove('hidden');
+                    updateBtn(); 
+                } 
+            }, 1000);
+
+            function updateBtn() { 
+                if(clicks < limit && ads.length > 0) {
+                    mainBtn.innerHTML = `<i class="fas fa-external-link-alt mr-2"></i> VERIFY AD (${clicks+1}/${limit})`;
+                    mainBtn.classList.add('animate-pulse');
+                } else { 
+                    mainBtn.innerHTML = `<i class="fas fa-arrow-right mr-2"></i> GET LINK`; 
+                    mainBtn.classList.remove('animate-pulse');
+                }
+            }
+
             function handleClick() {
                 if(clicks < limit && ads.length > 0) {
                     let r = ads[Math.floor(Math.random()*ads.length)];
-                    fetch('/track_ajax?sc={{sc}}&ad='+encodeURIComponent(r)); window.open(r, '_blank'); clicks++; updateBtn();
-                } else { window.location.href = "/{{sc}}?step="+({{step}}+1); }
+                    fetch('/track_ajax?sc={{sc}}&ad='+encodeURIComponent(r)); 
+                    window.open(r, '_blank'); 
+                    clicks++; 
+                    
+                    mainBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Checking...';
+                    mainBtn.setAttribute('disabled', 'true');
+                    
+                    // User must wait 3 seconds after clicking the ad to proceed
+                    setTimeout(() => {
+                        mainBtn.removeAttribute('disabled');
+                        updateBtn();
+                    }, 3000);
+
+                } else { 
+                    mainBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Loading...';
+                    window.location.href = "/{{sc}}?step="+({{step}}+1); 
+                }
             }
         </script>
-    </body></html>
+    </body>
+    </html>
     ''', s=settings, step=step, total_steps=settings['steps'], timer=settings['timer_seconds'], tc=tc, ads=ads, limit=settings['direct_click_limit'], sc=short_code, partners_html=get_channels_html(settings.get('step_theme', 'blue')))
 
 @app.route('/track_ajax')
@@ -400,13 +635,13 @@ def track_ajax():
     track_click(request.args.get('sc'), request.args.get('ad'))
     return "ok"
 
-# --- লগইন ও পাসওয়ার্ড রিকভারি (টেলিগ্রাম এর মাধ্যমে) ---
+# --- লগইন ও পাসওয়ার্ড রিকভারি (অপরিবর্তিত) ---
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    if is_logged_in(): return redirect(url_for('admin_panel')) # আগে থেকেই লগইন থাকলে প্যানেলে পাঠাবে
+    if is_logged_in(): return redirect(url_for('admin_panel'))
     if request.method == 'POST':
         if check_password_hash(get_settings()['admin_password'], request.form.get('password')):
-            session.permanent = True # এই লাইনের মাধ্যমে লগইন ৩০ দিন সেভ থাকবে
+            session.permanent = True
             session['logged_in'] = True; return redirect(url_for('admin_panel'))
     return render_template_string('<body style="background:#0f172a;display:flex;justify-content:center;align-items:center;height:100vh;padding:20px;"><form method="POST" style="background:white;padding:40px;border-radius:30px;text-align:center;width:100%;max-width:350px;"><h2 style="font-weight:900;margin-bottom:30px;">ADMIN LOGIN</h2><input type="password" name="password" placeholder="Key" style="width:100%;padding:15px;margin-bottom:15px;border:1px solid #ddd;border-radius:10px;text-align:center;"><button style="width:100%;padding:15px;background:#1e293b;color:white;border:none;border-radius:10px;font-weight:900;">LOGIN</button><a href="/forgot-password" style="display:block;margin-top:20px;font-size:12px;color:#3b82f6;text-decoration:none;">Forgot Passkey?</a></form></body>')
 
